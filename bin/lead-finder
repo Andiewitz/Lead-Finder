@@ -20,7 +20,7 @@ const path = require('path');
 const { prompt } = require('enquirer');
 const chalk = require('chalk');
 const { checkEnvComplete, ENV_FILE } = require('../src/config');
-const { welcome, configWizard, mainMenu } = require('../src/tui');
+const { welcome, configWizard, mainMenu, dashboard } = require('../src/tui');
 
 const { green, red, yellow, cyan, gray } = chalk;
 
@@ -64,6 +64,118 @@ Configuration:
   Or copy .env.example to .env and edit manually.
   Required: OPENROUTER_API_KEY, SEARCH_API_KEY, SMTP_USER, SMTP_PASS, FROM_EMAIL
 `);
+}
+
+async function runDashboardTUI() {
+  welcome();
+
+  if (!checkEnvComplete()) {
+    console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
+    await configWizard();
+  }
+
+  let running = true;
+  while (running) {
+    const stats = runPython(['status']);
+    let statsData = {};
+    try {
+      // runPython with stdio inherit prints directly; capture via separate call
+    } catch (e) {
+      // ignore
+    }
+
+    // Fetch stats via separate Python call with captured output
+    const statsResult = spawnSync(PYTHON_BIN, [MAIN_SCRIPT, 'status'], {
+      cwd: PROJECT_ROOT,
+      encoding: 'utf-8',
+      env: { ...process.env },
+    });
+    let parsedStats = {};
+    try {
+      parsedStats = JSON.parse(statsResult.stdout);
+    } catch (e) {
+      parsedStats = {};
+    }
+
+    dashboard(parsedStats);
+
+    const { action } = await prompt({
+      type: 'select',
+      name: 'action',
+      message: 'What would you like to do?',
+      choices: [
+        { name: 'find-leads', message: `${cyan('find-leads')}  — Discover new leads via Tavily` },
+        { name: 'send-email', message: `${cyan('send-email')}  — Send a personalized cold email` },
+        { name: 'check-replies', message: `${cyan('check-replies')}  — Poll IMAP and classify replies` },
+        { name: 'status', message: `${cyan('refresh')}  — Refresh dashboard` },
+        { name: 'config', message: `${cyan('config')}  — Edit settings` },
+        { name: 'start-mcp', message: `${cyan('start-mcp')}  — Start MCP server (for OpenCode/KiloCode)` },
+        { name: 'exit', message: `${gray('exit')}  — Quit` },
+      ],
+    });
+
+    switch (action) {
+      case 'find-leads':
+        runPython([]);
+        break;
+      case 'send-email': {
+        const { email } = await prompt({
+          type: 'input',
+          name: 'email',
+          message: 'Recipient email address:',
+          required: true,
+        });
+        const { company } = await prompt({
+          type: 'input',
+          name: 'company',
+          message: 'Company name (optional):',
+        });
+        const { personalization } = await prompt({
+          type: 'input',
+          name: 'personalization',
+          message: 'Verified detail about the business (optional):',
+        });
+        const { category } = await prompt({
+          type: 'select',
+          name: 'category',
+          message: 'Business category:',
+          choices: [
+            { name: 'services', message: 'Services' },
+            { name: 'cleaning', message: 'Cleaning' },
+            { name: 'landscaping', message: 'Landscaping' },
+            { name: 'handyman', message: 'Handyman' },
+            { name: 'auto detailing', message: 'Auto Detailing' },
+            { name: 'pet grooming', message: 'Pet Grooming' },
+            { name: 'pressure washing', message: 'Pressure Washing' },
+          ],
+        });
+        runPython(['send-email', '--email', email, '--company', company || '', '--personalization', personalization || '', '--category', category]);
+        break;
+      }
+      case 'check-replies':
+        runPython(['check-replies']);
+        break;
+      case 'status':
+        // Just refresh dashboard
+        break;
+      case 'config':
+        await configWizard();
+        break;
+      case 'start-mcp':
+        console.log(`\n${cyan('Starting MCP server...')}`);
+        require('../src/mcp_server');
+        running = false;
+        break;
+      case 'exit':
+        console.log(`\n${green('Goodbye!')}\n`);
+        running = false;
+        break;
+    }
+    if (running && action !== 'start-mcp') {
+      console.log(`\n${gray('Press Enter to continue...')}`);
+      await new Promise((resolve) => process.stdin.once('data', () => resolve()));
+    }
+  }
 }
 
 async function runTUI() {
@@ -145,15 +257,23 @@ async function runTUI() {
 const cmd = process.argv[2];
 
 switch (cmd) {
-  case 'start':
+  case 'start': {
+    // If running in a TTY (interactive terminal), boot dashboard TUI
+    // If running via stdio (MCP client like OpenCode/KiloCode), start MCP server
+    const isTTY = process.stdin.isTTY && !process.env.NON_INTERACTIVE;
+
     if (!checkEnvComplete()) {
-      configWizard().then(() => {
-        require('../src/mcp_server');
-      });
+      console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
+      await configWizard();
+    }
+
+    if (isTTY) {
+      await runDashboardTUI();
     } else {
       require('../src/mcp_server');
     }
     break;
+  }
   case '--config':
   case '-config':
   case 'config':

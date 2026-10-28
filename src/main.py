@@ -677,6 +677,7 @@ def cmd_check_replies():
 
 def cmd_status():
     """Print campaign statistics."""
+    db.init_db(DB_PATH)
     stats = db.get_stats(DB_PATH)
     print(json.dumps(stats, indent=2))
 
