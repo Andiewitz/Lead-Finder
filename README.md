@@ -16,25 +16,7 @@ Autonomous lead outreach automation for freelance web developers. Find Portland-
 | **SQLite Database** | Indexed leads, blacklist, whitelist tables |
 | **CAN-SPAM Ready** | Opt-out footer in every email |
 
-## Quick Start
-
-### 1. Install
-
-**Option A — Install from GitHub (recommended):**
-
-```bash
-npm install -g github:Andiewitz/Lead-Finder
-```
-
-**Option B — Clone and run locally:**
-
-```bash
-git clone https://github.com/Andiewitz/Lead-Finder.git
-cd Lead-Finder
-pip install -r requirements.txt
-```
-
-### 2. Run Interactive Config
+## Interactive Setup (TUI)
 
 Run the config wizard to set up all your API keys one by one:
 
@@ -54,6 +36,23 @@ This prompts you for each value interactively (secrets are masked as you type):
 - **Your Value Proposition** (optional)
 - **Daily Email Limit** (optional, default: 20)
 - **IMAP Username/Password** (optional, same as SMTP for reply tracking)
+
+### TUI Menu
+
+Launch the full interactive menu:
+
+```bash
+lead-finder --tui
+```
+
+Choose from:
+- **start** — Start MCP server (for OpenCode/KiloCode)
+- **find-leads** — Discover new leads via Tavily
+- **send-email** — Send a personalized cold email
+- **check-replies** — Poll IMAP inbox and classify replies
+- **status** — View campaign statistics
+- **config** — Edit settings
+- **exit** — Quit
 
 ### 3. Run
 
@@ -80,6 +79,7 @@ lead-finder --config
 ```
 
 Re-runs the wizard; any fields you leave blank keep their existing values. All settings are stored in `.env` (gitignored — never committed).
+
 
 
 ## npm Package + MCP Server (OpenCode / KiloCode)
@@ -174,6 +174,9 @@ This installs the `lead-finder` CLI and the MCP server. **Run `lead-finder --con
 ```bash
 # Start MCP server (for OpenCode/KiloCode) — auto-runs config if incomplete
 lead-finder start
+
+# Launch interactive TUI menu
+lead-finder --tui
 
 # Interactive config wizard (edit settings anytime)
 lead-finder --config
