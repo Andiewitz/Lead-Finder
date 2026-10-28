@@ -18,62 +18,85 @@ Autonomous lead outreach automation for freelance web developers. Find Portland-
 
 ## Quick Start
 
-### 1. Clone
+### 1. Install
+
+**Option A — Install from GitHub (recommended):**
 
 ```bash
-git clone https://github.com/andre1gr4ce/email-sender.git
-cd email-sender
+npm install -g github:Andiewitz/Lead-Finder
 ```
 
-### 2. Run Setup
+**Option B — Clone and run locally:**
 
 ```bash
-bash scripts/setup.sh
+git clone https://github.com/Andiewitz/Lead-Finder.git
+cd Lead-Finder
+pip install -r requirements.txt
 ```
 
-This creates a virtual environment, installs dependencies, copies `.env.example` to `.env`, initializes the database, runs tests, and optionally sets up a cron job.
+### 2. Run Interactive Config
 
-### 3. Configure `.env`
-
-Edit `.env` with your API keys:
-
-```ini
-OPENROUTER_API_KEY=sk-or-...          # from openrouter.ai/keys
-SEARCH_API_KEY=tvly-dev-...           # from tavily.com (free tier)
-SMTP_USER=your_email@gmail.com        # your Gmail address
-SMTP_PASS=your_16_char_app_password   # Gmail App Password (2FA required)
-FROM_EMAIL=your_email@gmail.com
-FROM_NAME=Your Name
-FROM_COMPANY=Your Company
-DAILY_LIMIT=20
-```
-
-**Gmail App Password:** Enable 2-Step Verification, then go to myaccount.google.com/apppasswords to generate a 16-character password.
-
-### 4. Run
+Run the config wizard to set up all your API keys one by one:
 
 ```bash
-source venv/bin/activate
-python src/main.py
+lead-finder --config
 ```
 
-### 5. Automate (Cron)
+This prompts you for each value interactively (secrets are masked as you type):
 
-The setup script can install a cron job that runs weekdays at 14:00 UTC (9AM EST / 3PM CET):
+- **OpenRouter API Key** — from https://openrouter.ai/keys (powers AI email writing)
+- **Tavily Search API Key** — from https://tavily.com (free tier: 1,000 searches/month)
+- **Gmail Address** — your Gmail email for sending + IMAP
+- **Gmail App Password** — 16-char App Password from myaccount.google.com/apppasswords (NOT your Gmail password)
+- **Your Name** — appears as email sender
+- **Sender Email** — usually same as your Gmail
+- **Your Company** (optional)
+- **Your Value Proposition** (optional)
+- **Daily Email Limit** (optional, default: 20)
+- **IMAP Username/Password** (optional, same as SMTP for reply tracking)
+
+### 3. Run
 
 ```bash
-0 14 * * 1-5 /path/to/venv/bin/python /path/to/email-sender/src/main.py >> /path/to/email-sender/logs.txt 2>&1
+lead-finder start          # Start MCP server (for OpenCode/KiloCode)
+lead-finder find-leads     # Discover new leads via Tavily
+lead-finder send-email     # Send a personalized cold email
+lead-finder check-replies  # Poll IMAP inbox and classify replies
+lead-finder status         # View campaign statistics
 ```
+
+### 4. Automate (Cron)
+
+The cron job runs weekdays at 14:00 UTC (9AM EST / 3PM CET):
+
+```bash
+0 14 * * 1-5 /path/to/venv/bin/python /path/to/Lead-Finder/src/main.py >> /path/to/Lead-Finder/logs.txt 2>&1
+```
+
+## Edit Config Anytime
+
+```bash
+lead-finder --config
+```
+
+Re-runs the wizard; any fields you leave blank keep their existing values. All settings are stored in `.env` (gitignored — never committed).
+
 
 ## npm Package + MCP Server (OpenCode / KiloCode)
 
 Install `@andrewitz/lead-finder` from npm to use the lead outreach system as an MCP server in OpenCode or KiloCode:
 
 ```bash
+npm install -g github:Andiewitz/Lead-Finder
+```
+
+Or from npm once published:
+
+```bash
 npm install -g @andrewitz/lead-finder
 ```
 
-This installs the `lead-finder` CLI and the MCP server. Configure your AI assistant to connect to it:
+This installs the `lead-finder` CLI and the MCP server. **Run `lead-finder --config` first** to set up your API keys, then configure your AI assistant to connect to it:
 
 ### OpenCode MCP Config (`~/.opencode/mcp.json` or `.mcp.opencode.json`)
 
@@ -149,8 +172,11 @@ This installs the `lead-finder` CLI and the MCP server. Configure your AI assist
 ### CLI Commands
 
 ```bash
-# Start MCP server (for OpenCode/KiloCode)
+# Start MCP server (for OpenCode/KiloCode) — auto-runs config if incomplete
 lead-finder start
+
+# Interactive config wizard (edit settings anytime)
+lead-finder --config
 
 # Discover new leads
 lead-finder find-leads --industry "cleaning services" --location "Portland, OR"
