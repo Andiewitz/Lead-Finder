@@ -173,9 +173,10 @@ This installs the `lead-finder` CLI and the MCP server. **Run `lead-finder --con
 
 ```bash
 # Start MCP server (for OpenCode/KiloCode) — auto-runs config if incomplete
+# When run in an interactive terminal (TTY), boots dashboard TUI instead
 lead-finder start
 
-# Launch interactive TUI menu
+# Launch interactive TUI menu (dashboard + all commands)
 lead-finder --tui
 
 # Interactive config wizard (edit settings anytime)
@@ -199,6 +200,8 @@ lead-finder blacklist --email spam@example.com --reason "Spam complainer"
 # Search existing leads
 lead-finder search --query "handyman"
 ```
+
+**Dashboard TUI:** When you run `lead-finder start` in an interactive terminal, it boots a full-screen dashboard showing campaign stats (sent today, total, drafts, whitelist, blacklist) with an action menu. When run via stdio (e.g., by OpenCode/KiloCode as an MCP server), it starts the MCP server instead.
 
 
 ## Architecture
