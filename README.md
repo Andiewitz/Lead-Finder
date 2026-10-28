@@ -64,6 +64,16 @@ lead-finder check-replies  # Poll IMAP inbox and classify replies
 lead-finder status         # View campaign statistics
 ```
 
+### Python Dependencies
+
+The MCP server runs Python scripts that require:
+
+```bash
+pip install -r requirements.txt
+```
+
+Current dependencies: `requests`, `python-dotenv`
+
 ### 4. Automate (Cron)
 
 The cron job runs weekdays at 14:00 UTC (9AM EST / 3PM CET):
