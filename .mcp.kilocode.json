@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "lead-finder": {
+      "command": "npx",
+      "args": ["-y", "@andrewitz/lead-finder@latest", "start"],
+      "env": {
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "SEARCH_API_KEY": "${SEARCH_API_KEY}",
+        "SMTP_HOST": "smtp.gmail.com",
+        "SMTP_PORT": "587",
+        "SMTP_USER": "${SMTP_USER}",
+        "SMTP_PASS": "${SMTP_PASS}",
+        "IMAP_HOST": "imap.gmail.com",
+        "IMAP_USER": "${SMTP_USER}",
+        "IMAP_PASS": "${SMTP_PASS}",
+        "FROM_NAME": "Andrei",
+        "FROM_EMAIL": "${SMTP_USER}",
+        "FROM_COMPANY": "Andrei Freelance Web Development",
+        "VALUE_PROP": "I build custom websites for small businesses",
+        "DAILY_LIMIT": "20",
+        "DB_PATH": "${HOME}/.lead-finder/leads.db"
+      }
+    }
+  }
+}

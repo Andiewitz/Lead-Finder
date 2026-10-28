@@ -21,6 +21,7 @@ from src import db
 from src import writer
 from src import classifier
 from src import discovery
+from src import sender
 
 
 class TestOpenRouterChat(unittest.TestCase):

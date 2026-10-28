@@ -65,6 +65,113 @@ The setup script can install a cron job that runs weekdays at 14:00 UTC (9AM EST
 0 14 * * 1-5 /path/to/venv/bin/python /path/to/email-sender/src/main.py >> /path/to/email-sender/logs.txt 2>&1
 ```
 
+## npm Package + MCP Server (OpenCode / KiloCode)
+
+Install `@andrewitz/lead-finder` from npm to use the lead outreach system as an MCP server in OpenCode or KiloCode:
+
+```bash
+npm install -g @andrewitz/lead-finder
+```
+
+This installs the `lead-finder` CLI and the MCP server. Configure your AI assistant to connect to it:
+
+### OpenCode MCP Config (`~/.opencode/mcp.json` or `.mcp.opencode.json`)
+
+```json
+{
+  "mcpServers": {
+    "lead-finder": {
+      "command": "npx",
+      "args": ["-y", "@andrewitz/lead-finder@latest", "start"],
+      "env": {
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "SEARCH_API_KEY": "${SEARCH_API_KEY}",
+        "SMTP_HOST": "smtp.gmail.com",
+        "SMTP_PORT": "587",
+        "SMTP_USER": "${SMTP_USER}",
+        "SMTP_PASS": "${SMTP_PASS}",
+        "IMAP_HOST": "imap.gmail.com",
+        "IMAP_USER": "${SMTP_USER}",
+        "IMAP_PASS": "${SMTP_PASS}",
+        "FROM_NAME": "Andrei",
+        "FROM_EMAIL": "${SMTP_USER}",
+        "FROM_COMPANY": "Andrei Freelance Web Development",
+        "VALUE_PROP": "I build custom websites for small businesses",
+        "DAILY_LIMIT": "20",
+        "DB_PATH": "${HOME}/.lead-finder/leads.db"
+      }
+    }
+  }
+}
+```
+
+### KiloCode MCP Config (`~/.kilocode/mcp.json` or `.mcp.kilocode.json`)
+
+```json
+{
+  "mcpServers": {
+    "lead-finder": {
+      "command": "npx",
+      "args": ["-y", "@andrewitz/lead-finder@latest", "start"],
+      "env": {
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "SEARCH_API_KEY": "${SEARCH_API_KEY}",
+        "SMTP_HOST": "smtp.gmail.com",
+        "SMTP_PORT": "587",
+        "SMTP_USER": "${SMTP_USER}",
+        "SMTP_PASS": "${SMTP_PASS}",
+        "IMAP_HOST": "imap.gmail.com",
+        "IMAP_USER": "${SMTP_USER}",
+        "IMAP_PASS": "${SMTP_PASS}",
+        "FROM_NAME": "Andrei",
+        "FROM_EMAIL": "${SMTP_USER}",
+        "FROM_COMPANY": "Andrei Freelance Web Development",
+        "VALUE_PROP": "I build custom websites for small businesses",
+        "DAILY_LIMIT": "20",
+        "DB_PATH": "${HOME}/.lead-finder/leads.db"
+      }
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `find_leads` | Discover Portland-area small businesses via Tavily web search |
+| `send_email` | Send a personalized cold email via Gmail SMTP |
+| `check_replies` | Poll IMAP inbox and classify replies (Interested / Not interested / Out of office) |
+| `get_stats` | View campaign statistics (sent today, total, drafts, whitelist, blacklist) |
+| `add_to_blacklist` | Add an email/domain to the permanent do-not-contact list |
+| `search_leads` | Search existing lead database by name, email, or category |
+
+### CLI Commands
+
+```bash
+# Start MCP server (for OpenCode/KiloCode)
+lead-finder start
+
+# Discover new leads
+lead-finder find-leads --industry "cleaning services" --location "Portland, OR"
+
+# Send a single email
+lead-finder send-email --email grace@example.com --company "Grace Cleaning" --personalization "They offer eco-friendly cleaning"
+
+# Check for replies
+lead-finder check-replies
+
+# View statistics
+lead-finder status
+
+# Blacklist an email
+lead-finder blacklist --email spam@example.com --reason "Spam complainer"
+
+# Search existing leads
+lead-finder search --query "handyman"
+```
+
+
 ## Architecture
 
 ```
@@ -74,7 +181,13 @@ src/
 ├── discovery.py    # Tavily search + email extraction
 ├── writer.py       # OpenRouter primary, template fallback
 ├── sender.py       # Gmail SMTP + confirmation email
-└── main.py         # Orchestrator: full pipeline
+├── classifier.py   # OpenRouter keyword reply classification
+└── main.py         # Orchestrator: full pipeline + CLI subcommands
+
+bin/
+└── lead-finder     # CLI entry point
+
+src/mcp_server.js   # MCP server over stdio (for OpenCode/KiloCode)
 ```
 
 ### Database Tables

@@ -1,0 +1,50 @@
+{
+  "name": "@andrewitz/lead-finder",
+  "version": "1.0.0",
+  "description": "Autonomous lead outreach automation for web development client acquisition — MCP server for OpenCode and KiloCode",
+  "main": "src/mcp_server.js",
+  "bin": {
+    "lead-finder": "bin/lead-finder"
+  },
+  "scripts": {
+    "start": "node src/mcp_server.js",
+    "dev": "node src/mcp_server.js",
+    "test": "echo \"Tests run via Python pytest\" && exit 0",
+    "install:python": "pip install -r requirements.txt && pip install python-dotenv requests"
+  },
+  "keywords": [
+    "lead-generation",
+    "cold-email",
+    "smtp",
+    "automation",
+    "mcp",
+    "model-context-protocol",
+    "opencode",
+    "kilocode",
+    "web-development",
+    "small-business"
+  ],
+  "author": "Andrei <gracefulandrei@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Andiewitz/Lead-Finder.git"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "scripts/",
+    "requirements.txt",
+    ".env.example",
+    "AI_AGENT_BRIEF.md",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {}
+}

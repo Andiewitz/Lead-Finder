@@ -1,0 +1,93 @@
+#!/usr/bin/env node
+/**
+ * lead-finder CLI entry point
+ *
+ * Usage:
+ *   lead-finder start                 # Start the MCP server (stdio)
+ *   lead-finder find-leads            # Discover leads via Tavily search
+ *   lead-finder send-email <email>    # Send a personalized cold email
+ *   lead-finder check-replies         # Poll IMAP inbox and classify replies
+ *   lead-finder status                # View campaign statistics
+ *
+ * Requires Python backend (requirements.txt) and .env config.
+ */
+
+const { spawnSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const PYTHON_BIN = process.env.LEAD_FINDER_PYTHON || 'python3';
+const MAIN_SCRIPT = path.join(PROJECT_ROOT, 'src', 'main.py');
+
+function runPython(args = []) {
+  const result = spawnSync(PYTHON_BIN, [MAIN_SCRIPT, ...args], {
+    cwd: PROJECT_ROOT,
+    stdio: 'inherit',
+    env: { ...process.env },
+  });
+  process.exit(result.status || 0);
+}
+
+function showHelp() {
+  console.log(`
+lead-finder — Autonomous lead outreach automation
+
+Usage:
+  lead-finder start                 Start the MCP server (stdio)
+  lead-finder find-leads            Discover new leads via Tavily search
+  lead-finder send-email <email>    Send a personalized cold email to <email>
+  lead-finder check-replies         Poll IMAP inbox and classify replies
+  lead-finder status                View campaign statistics
+  lead-finder --help                Show this help message
+
+Examples:
+  lead-finder start
+  lead-finder find-leads
+  lead-finder send-email grace@example.com
+  lead-finder check-replies
+  lead-finder status
+
+Configuration:
+  Copy .env.example to .env and fill in your API keys.
+  Required: OPENROUTER_API_KEY, SEARCH_API_KEY, SMTP_USER, SMTP_PASS, FROM_EMAIL
+`);
+}
+
+const cmd = process.argv[2];
+
+switch (cmd) {
+  case 'start':
+  case undefined:
+    // Default: start MCP server
+    require('../src/mcp_server');
+    break;
+  case 'find-leads':
+  case 'find':
+    runPython([]);
+    break;
+  case 'send-email':
+    if (!process.argv[3]) {
+      console.error('Error: send-email requires an email address');
+      console.log('Usage: lead-finder send-email <email>');
+      process.exit(1);
+    }
+    runPython(['send-email', process.argv[3]]);
+    break;
+  case 'check-replies':
+  case 'replies':
+    runPython(['check-replies']);
+    break;
+  case 'status':
+  case 'stats':
+    runPython(['status']);
+    break;
+  case '--help':
+  case '-h':
+    showHelp();
+    process.exit(0);
+  default:
+    console.error(`Unknown command: ${cmd}`);
+    showHelp();
+    process.exit(1);
+}
