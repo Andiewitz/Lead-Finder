@@ -5,10 +5,11 @@
  * Usage:
  *   lead-finder start                 Start the MCP server (stdio)
  *   lead-finder find-leads            Discover leads via Tavily search
- *   lead-finder send-email <email>    # Send a personalized cold email
- *   lead-finder check-replies         # Poll IMAP inbox and classify replies
+ *   lead-finder send-email <email>    Send a personalized cold email
+ *   lead-finder check-replies         Poll IMAP inbox and classify replies
  *   lead-finder status                # View campaign statistics
- *   lead-finder --config | -config    # Interactive setup wizard
+ *   lead-finder --config | -config    # Interactive TUI setup wizard
+ *   lead-finder --tui                 # Launch TUI menu
  *   lead-finder --help | -h           # Show this help message
  *
  * Requires Python backend (requirements.txt) and .env config.
@@ -16,7 +17,12 @@
 
 const { spawnSync } = require('child_process');
 const path = require('path');
-const { runConfigWizard, checkEnvComplete, ENV_FILE } = require('../src/config');
+const { prompt } = require('enquirer');
+const chalk = require('chalk');
+const { checkEnvComplete, ENV_FILE } = require('../src/config');
+const { welcome, configWizard, mainMenu } = require('../src/tui');
+
+const { green, red, yellow, cyan, gray } = chalk;
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PYTHON_BIN = process.env.LEAD_FINDER_PYTHON || 'python3';
@@ -41,7 +47,8 @@ Usage:
   lead-finder send-email <email>    Send a personalized cold email to <email>
   lead-finder check-replies         Poll IMAP inbox and classify replies
   lead-finder status                View campaign statistics
-  lead-finder --config | -config    # Interactive setup wizard
+  lead-finder --config | -config    # Interactive TUI setup wizard
+  lead-finder --tui                 # Launch TUI menu
   lead-finder --help | -h           # Show this help message
 
 Examples:
@@ -53,41 +60,121 @@ Examples:
   lead-finder --config
 
 Configuration:
-  Run 'lead-finder --config' to set up your API keys interactively.
+  Run 'lead-finder --config' to set up your API keys interactively via TUI.
   Or copy .env.example to .env and edit manually.
   Required: OPENROUTER_API_KEY, SEARCH_API_KEY, SMTP_USER, SMTP_PASS, FROM_EMAIL
 `);
 }
 
-function ensureConfig() {
+async function runTUI() {
+  welcome();
+
   if (!checkEnvComplete()) {
-    console.log('⚠ Configuration is incomplete or missing.\n');
-    runConfigWizard();
-    return true; // config was just run
+    console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
+    await configWizard();
   }
-  return false;
+
+  let running = true;
+  while (running) {
+    const action = await mainMenu();
+
+    switch (action) {
+      case 'start':
+        console.log(`\n${cyan('Starting MCP server...')}`);
+        require('../src/mcp_server');
+        running = false;
+        break;
+      case 'find-leads':
+        runPython([]);
+        break;
+      case 'send-email': {
+        const { email } = await prompt({
+          type: 'input',
+          name: 'email',
+          message: 'Recipient email address:',
+          required: true,
+        });
+        const { company } = await prompt({
+          type: 'input',
+          name: 'company',
+          message: 'Company name (optional):',
+        });
+        const { personalization } = await prompt({
+          type: 'input',
+          name: 'personalization',
+          message: 'Verified detail about the business (optional):',
+        });
+        const { category } = await prompt({
+          type: 'select',
+          name: 'category',
+          message: 'Business category:',
+          choices: [
+            { name: 'services', message: 'Services' },
+            { name: 'cleaning', message: 'Cleaning' },
+            { name: 'landscaping', message: 'Landscaping' },
+            { name: 'handyman', message: 'Handyman' },
+            { name: 'auto detailing', message: 'Auto Detailing' },
+            { name: 'pet grooming', message: 'Pet Grooming' },
+            { name: 'pressure washing', message: 'Pressure Washing' },
+          ],
+        });
+        runPython(['send-email', '--email', email, '--company', company || '', '--personalization', personalization || '', '--category', category]);
+        break;
+      }
+      case 'check-replies':
+        runPython(['check-replies']);
+        break;
+      case 'status':
+        runPython(['status']);
+        break;
+      case 'config':
+        await configWizard();
+        break;
+      case 'exit':
+        console.log(`\n${green('Goodbye!')}\n`);
+        running = false;
+        break;
+    }
+    if (running && action !== 'start') {
+      console.log(`\n${gray('Press Enter to continue...')}`);
+      await new Promise((resolve) => process.stdin.once('data', () => resolve()));
+    }
+  }
 }
 
 const cmd = process.argv[2];
 
 switch (cmd) {
   case 'start':
-    // Auto-run config if incomplete
-    ensureConfig();
-    require('../src/mcp_server');
+    if (!checkEnvComplete()) {
+      configWizard().then(() => {
+        require('../src/mcp_server');
+      });
+    } else {
+      require('../src/mcp_server');
+    }
     break;
   case '--config':
   case '-config':
   case 'config':
-    runConfigWizard();
+    configWizard();
+    break;
+  case '--tui':
+  case '-tui':
+  case 'tui':
+    runTUI();
     break;
   case 'find-leads':
   case 'find':
-    ensureConfig();
+    if (!checkEnvComplete()) {
+      configWizard();
+    }
     runPython([]);
     break;
   case 'send-email':
-    ensureConfig();
+    if (!checkEnvComplete()) {
+      configWizard();
+    }
     if (!process.argv[3]) {
       console.error('Error: send-email requires an email address');
       console.log('Usage: lead-finder send-email <email>');
@@ -97,12 +184,16 @@ switch (cmd) {
     break;
   case 'check-replies':
   case 'replies':
-    ensureConfig();
+    if (!checkEnvComplete()) {
+      configWizard();
+    }
     runPython(['check-replies']);
     break;
   case 'status':
   case 'stats':
-    ensureConfig();
+    if (!checkEnvComplete()) {
+      configWizard();
+    }
     runPython(['status']);
     break;
   case '--help':
