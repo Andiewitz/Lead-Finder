@@ -185,7 +185,6 @@ async function runTUI() {
     console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
     await configWizard();
   }
-
   let running = true;
   while (running) {
     const action = await mainMenu();
@@ -256,72 +255,79 @@ async function runTUI() {
 
 const cmd = process.argv[2];
 
-switch (cmd) {
-  case 'start': {
-    // If running in a TTY (interactive terminal), boot dashboard TUI
-    // If running via stdio (MCP client like OpenCode/KiloCode), start MCP server
-    const isTTY = process.stdin.isTTY && !process.env.NON_INTERACTIVE;
+async function main() {
+  switch (cmd) {
+    case 'start': {
+      // If running in a TTY (interactive terminal), boot dashboard TUI
+      // If running via stdio (MCP client like OpenCode/KiloCode), start MCP server
+      const isTTY = process.stdin.isTTY && !process.env.NON_INTERACTIVE;
 
-    if (!checkEnvComplete()) {
-      console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
+      if (!checkEnvComplete()) {
+        console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
+        await configWizard();
+      }
+
+      if (isTTY) {
+        await runDashboardTUI();
+      } else {
+        require('../src/mcp_server');
+      }
+      break;
+    }
+    case '--config':
+    case '-config':
+    case 'config':
       await configWizard();
-    }
-
-    if (isTTY) {
-      await runDashboardTUI();
-    } else {
-      require('../src/mcp_server');
-    }
-    break;
-  }
-  case '--config':
-  case '-config':
-  case 'config':
-    configWizard();
-    break;
-  case '--tui':
-  case '-tui':
-  case 'tui':
-    runTUI();
-    break;
+      break;
+    case '--tui':
+    case '-tui':
+    case 'tui':
+      await runTUI();
+      break;
   case 'find-leads':
   case 'find':
     if (!checkEnvComplete()) {
-      configWizard();
+      await configWizard();
     }
     runPython([]);
     break;
   case 'send-email':
     if (!checkEnvComplete()) {
-      configWizard();
+      await configWizard();
     }
     if (!process.argv[3]) {
-      console.error('Error: send-email requires an email address');
-      console.log('Usage: lead-finder send-email <email>');
-      process.exit(1);
-    }
-    runPython(['send-email', process.argv[3]]);
-    break;
+        console.error('Error: send-email requires an email address');
+        console.log('Usage: lead-finder send-email <email>');
+        process.exit(1);
+      }
+      runPython(['send-email', process.argv[3]]);
+      break;
   case 'check-replies':
   case 'replies':
     if (!checkEnvComplete()) {
-      configWizard();
+      await configWizard();
     }
     runPython(['check-replies']);
     break;
   case 'status':
   case 'stats':
     if (!checkEnvComplete()) {
-      configWizard();
+      await configWizard();
     }
     runPython(['status']);
-    break;
-  case '--help':
-  case '-h':
-    showHelp();
-    process.exit(0);
-  default:
-    console.error(`Unknown command: ${cmd}`);
-    showHelp();
-    process.exit(1);
+      break;
+    case '--help':
+    case '-h':
+      showHelp();
+      process.exit(0);
+    default:
+      console.error(`Unknown command: ${cmd}`);
+      showHelp();
+      process.exit(1);
+  }
 }
+
+main().catch((err) => {
+  console.error(`${red('Fatal error:')} ${err.message}`);
+  process.exit(1);
+});
