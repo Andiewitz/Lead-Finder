@@ -21,7 +21,7 @@ var/
 .installed.cfg
 *.egg
 
-# Environment files
+# Environment files (never commit secrets)
 .env
 .env.local
 .env.*.local
@@ -48,3 +48,8 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
