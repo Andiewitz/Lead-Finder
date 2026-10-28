@@ -3,18 +3,20 @@
  * lead-finder CLI entry point
  *
  * Usage:
- *   lead-finder start                 # Start the MCP server (stdio)
- *   lead-finder find-leads            # Discover leads via Tavily search
+ *   lead-finder start                 Start the MCP server (stdio)
+ *   lead-finder find-leads            Discover leads via Tavily search
  *   lead-finder send-email <email>    # Send a personalized cold email
  *   lead-finder check-replies         # Poll IMAP inbox and classify replies
  *   lead-finder status                # View campaign statistics
+ *   lead-finder --config | -config    # Interactive setup wizard
+ *   lead-finder --help | -h           # Show this help message
  *
  * Requires Python backend (requirements.txt) and .env config.
  */
 
 const { spawnSync } = require('child_process');
 const path = require('path');
-const fs = require('fs');
+const { runConfigWizard, checkEnvComplete, ENV_FILE } = require('../src/config');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PYTHON_BIN = process.env.LEAD_FINDER_PYTHON || 'python3';
@@ -39,34 +41,53 @@ Usage:
   lead-finder send-email <email>    Send a personalized cold email to <email>
   lead-finder check-replies         Poll IMAP inbox and classify replies
   lead-finder status                View campaign statistics
-  lead-finder --help                Show this help message
+  lead-finder --config | -config    # Interactive setup wizard
+  lead-finder --help | -h           # Show this help message
 
 Examples:
   lead-finder start
-  lead-finder find-leads
-  lead-finder send-email grace@example.com
+  lead-finder find-leads --industry "handyman" --location "Portland, OR"
+  lead-finder send-email --email grace@example.com --company "Grace Cleaning"
   lead-finder check-replies
   lead-finder status
+  lead-finder --config
 
 Configuration:
-  Copy .env.example to .env and fill in your API keys.
+  Run 'lead-finder --config' to set up your API keys interactively.
+  Or copy .env.example to .env and edit manually.
   Required: OPENROUTER_API_KEY, SEARCH_API_KEY, SMTP_USER, SMTP_PASS, FROM_EMAIL
 `);
+}
+
+function ensureConfig() {
+  if (!checkEnvComplete()) {
+    console.log('⚠ Configuration is incomplete or missing.\n');
+    runConfigWizard();
+    return true; // config was just run
+  }
+  return false;
 }
 
 const cmd = process.argv[2];
 
 switch (cmd) {
   case 'start':
-  case undefined:
-    // Default: start MCP server
+    // Auto-run config if incomplete
+    ensureConfig();
     require('../src/mcp_server');
+    break;
+  case '--config':
+  case '-config':
+  case 'config':
+    runConfigWizard();
     break;
   case 'find-leads':
   case 'find':
+    ensureConfig();
     runPython([]);
     break;
   case 'send-email':
+    ensureConfig();
     if (!process.argv[3]) {
       console.error('Error: send-email requires an email address');
       console.log('Usage: lead-finder send-email <email>');
@@ -76,10 +97,12 @@ switch (cmd) {
     break;
   case 'check-replies':
   case 'replies':
+    ensureConfig();
     runPython(['check-replies']);
     break;
   case 'status':
   case 'stats':
+    ensureConfig();
     runPython(['status']);
     break;
   case '--help':
