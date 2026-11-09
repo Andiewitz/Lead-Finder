@@ -10,38 +10,44 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
-def send_email(
-    to_email: str,
-    subject: str,
-    html_body: str,
-    smtp_host: str,
-    smtp_port: int,
-    smtp_user: str,
-    smtp_pass: str,
-    from_name: str,
-    from_email: str,
-) -> bool:
-    """
-    Send an HTML email via SMTP.
+class DeliveryNotSentError(Exception):
+    """SMTP rejected the message or failed before message submission."""
 
-    Returns True on success, False on failure.
-    """
+
+def send_email(to_email: str, subject: str, html_body: str, smtp_host: str,
+               smtp_port: int, smtp_user: str, smtp_pass: str,
+               from_name: str, from_email: str) -> bool:
+    """Return False for an ambiguous delivery; raise if definitely not sent."""
+    server = None
+    submitted = False
     try:
         msg = MIMEMultipart("alternative")
         msg["From"] = f"{from_name} <{from_email}>"
         msg["To"] = to_email
         msg["Subject"] = subject
         msg.attach(MIMEText(html_body, "html"))
-
         server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
         server.starttls()
         server.login(smtp_user, smtp_pass)
+        submitted = True
         server.send_message(msg)
-        server.quit()
         return True
-    except Exception as e:
-        print(f"  SMTP error: {e}", file=sys.stderr)
+    except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused, smtplib.SMTPDataError) as exc:
+        raise DeliveryNotSentError(f"SMTP rejected the message: {exc}") from exc
+    except Exception as exc:
+        if not submitted:
+            raise DeliveryNotSentError(f"SMTP connection or login failed: {exc}") from exc
+        print(f"SMTP outcome is uncertain: {exc}", file=sys.stderr)
         return False
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                try:
+                    server.close()
+                except Exception as exc:
+                    print(f"SMTP cleanup failed: {exc}", file=sys.stderr)
 
 
 def send_confirmation_email(

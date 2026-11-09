@@ -298,12 +298,12 @@ class TestSendEmail(unittest.TestCase):
         mock_server.login.side_effect = Exception("Auth failed")
         mock_smtp.return_value = mock_server
 
-        result = sender.send_email(
-            "test@example.com", "Hello", "<p>Body</p>",
-            "smtp.gmail.com", 587, "user@gmail.com", "pass",
-            "Test User", "user@gmail.com",
-        )
-        self.assertFalse(result)
+        with self.assertRaises(sender.DeliveryNotSentError):
+            sender.send_email(
+                "test@example.com", "Hello", "<p>Body</p>",
+                "smtp.gmail.com", 587, "user@gmail.com", "pass",
+                "Test User", "user@gmail.com",
+            )
 
 
 class TestClassifier(unittest.TestCase):

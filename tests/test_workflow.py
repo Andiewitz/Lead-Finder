@@ -312,3 +312,35 @@ def test_saved_preview_sends_exact_content_and_rechecks_suppression(tmp_path, mo
     from html import escape
     assert sent_args[2] == '<p>' + escape(preview['body']).replace('\n', '<br>') + '</p>'
     assert main.db.get_draft(preview['draft_id'], path) is None
+
+
+def test_smtp_outcomes_and_review_resolution(tmp_path):
+    import smtplib
+    from unittest.mock import MagicMock
+
+    import pytest
+
+    from src import db, sender
+    args = ('recipient@example.com', 'subject', 'body', 'smtp.example.com', 587,
+            'user', 'password', 'Tester', 'me@example.com')
+    server = MagicMock()
+    server.login.side_effect = smtplib.SMTPAuthenticationError(535, b'failed')
+    with patch.object(sender.smtplib, 'SMTP', return_value=server):
+        with pytest.raises(sender.DeliveryNotSentError):
+            sender.send_email(*args)
+    server = MagicMock()
+    server.send_message.side_effect = OSError('connection lost')
+    with patch.object(sender.smtplib, 'SMTP', return_value=server):
+        assert sender.send_email(*args) is False
+    server = MagicMock()
+    server.quit.side_effect = OSError('quit failed')
+    with patch.object(sender.smtplib, 'SMTP', return_value=server):
+        assert sender.send_email(*args) is True
+    path = str(tmp_path / 'review.db')
+    db.init_db(path)
+    lead = db.reserve_send({'public_business_email': 'recipient@example.com'}, 5, path)
+    db.mark_send_uncertain(lead, path)
+    assert db.get_pending_sends(path)[0]['id'] == lead
+    assert db.resolve_pending_send(lead, False, path)
+    assert db.get_draft(lead, path) is not None
+    assert not db.resolve_pending_send(lead, False, path)

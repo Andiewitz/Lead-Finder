@@ -301,6 +301,27 @@ def mark_send_uncertain(lead_id: int, db_path: str) -> None:
         conn.commit()
 
 
+
+def mark_not_sent(lead_id: int, db_path: str) -> None:
+    with closing(get_connection(db_path)) as conn:
+        conn.execute("UPDATE leads SET sending_status='draft' WHERE id=? AND sending_status='sending'", (lead_id,))
+        conn.commit()
+
+
+def get_pending_sends(db_path: str) -> List[Dict[str, Any]]:
+    with closing(get_connection(db_path)) as conn:
+        rows = conn.execute("SELECT id, public_business_email, email_subject, sending_status, created_at FROM leads WHERE sending_status IN ('sending', 'uncertain') ORDER BY id").fetchall()
+        return [dict(row) for row in rows]
+
+
+def resolve_pending_send(lead_id: int, sent: bool, db_path: str) -> bool:
+    with closing(get_connection(db_path)) as conn:
+        status = 'sent' if sent else 'draft'
+        timestamp = datetime.now(timezone.utc).isoformat() if sent else None
+        cursor = conn.execute("UPDATE leads SET sending_status=?, sent_timestamp=? WHERE id=? AND sending_status IN ('sending', 'uncertain')", (status, timestamp, lead_id))
+        conn.commit()
+        return cursor.rowcount == 1
+
 def add_to_blacklist(email_addr: str, business_name: str = "", reason: str = "", db_path: str = "leads.db") -> None:
     """Add an email to the blacklist (never contact again)."""
     with closing(get_connection(db_path)) as conn:

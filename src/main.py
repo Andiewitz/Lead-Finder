@@ -247,6 +247,11 @@ def main() -> None:
     draft_parser = subparsers.add_parser('send-draft', help='Send an exact saved preview')
     draft_parser.add_argument('--id', type=int, required=True, help='Saved draft ID')
 
+    subparsers.add_parser('review-sends', help='List sends requiring manual review')
+    resolve_parser = subparsers.add_parser('resolve-send', help='Record a manually verified send outcome')
+    resolve_parser.add_argument('--id', type=int, required=True)
+    resolve_parser.add_argument('--result', choices=['sent', 'not-sent'], required=True)
+
     # check-replies - poll IMAP for replies
     subparsers.add_parser('check-replies', help='Poll IMAP inbox and classify replies')
 
@@ -273,6 +278,12 @@ def main() -> None:
         cmd_send_email(args)
     elif args.command == 'send-draft':
         cmd_send_draft(args)
+    elif args.command == 'review-sends':
+        print(json.dumps({'pending': db.get_pending_sends(DB_PATH)}, indent=2))
+    elif args.command == 'resolve-send':
+        if not db.resolve_pending_send(args.id, args.result == 'sent', DB_PATH):
+            raise SystemExit('Pending send not found')
+        print(json.dumps({'id': args.id, 'result': args.result}))
     elif args.command == 'check-replies':
         cmd_check_replies()
     elif args.command == 'status':
@@ -414,8 +425,13 @@ def _send_record(record, smtp_port, daily_limit, draft_id=None):
         sys.exit(1)
     from html import escape
     full_html = f"<p>{escape(record['email_body']).replace(chr(10), '<br>')}</p>"
-    success = sender.send_email(record['public_business_email'], record['email_subject'], full_html,
-                                SMTP_HOST, smtp_port, SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL)
+    try:
+        success = sender.send_email(record['public_business_email'], record['email_subject'], full_html,
+                                    SMTP_HOST, smtp_port, SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL)
+    except sender.DeliveryNotSentError as exc:
+        db.mark_not_sent(lead_id, DB_PATH)
+        print(json.dumps({"sent": False, "status": "not-sent", "error": str(exc), "draft_id": lead_id}))
+        sys.exit(1)
     if not success:
         db.mark_send_uncertain(lead_id, DB_PATH)
         print(json.dumps({"sent": False, "status": "uncertain", "error": "SMTP outcome unknown; review before retrying", "email": record['public_business_email'], "lead_id": lead_id}))

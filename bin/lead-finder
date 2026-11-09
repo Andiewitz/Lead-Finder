@@ -295,6 +295,8 @@ async function main() {
       break;
     case 'send-email':
     case 'send-draft':
+    case 'review-sends':
+    case 'resolve-send':
     case 'check-replies':
     case 'status':
     case 'blacklist':
