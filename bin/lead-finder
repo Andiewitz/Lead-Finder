@@ -71,8 +71,7 @@ async function runDashboardTUI() {
   welcome();
 
   if (!checkEnvComplete()) {
-    console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
-    await configWizard();
+    console.log(`${yellow('Configuration is incomplete. Choose config to set up services.')}\n`);
   }
 
   let running = true;
@@ -191,8 +190,7 @@ async function runTUI() {
   welcome();
 
   if (!checkEnvComplete()) {
-    console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
-    await configWizard();
+    console.log(`${yellow('Configuration is incomplete. Choose config to set up services.')}\n`);
   }
   let running = true;
   while (running) {
@@ -286,11 +284,6 @@ async function main() {
       // If running in a TTY (interactive terminal), boot dashboard TUI
       // If running via stdio (MCP client like OpenCode/KiloCode), start MCP server
       const isTTY = process.stdin.isTTY && !process.env.NON_INTERACTIVE;
-
-      if (isTTY && !checkEnvComplete()) {
-        console.log(`${yellow('⚠ Configuration is incomplete. Running setup wizard...')}\n`);
-        await configWizard();
-      }
 
       if (isTTY) {
         await runDashboardTUI();

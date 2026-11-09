@@ -13,9 +13,12 @@
 const readline = require('readline');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const ENV_FILE = path.join(PROJECT_ROOT, '.env');
+const LEGACY_ENV = path.join(PROJECT_ROOT, '.env');
+const DATA_DIR = process.env.LEAD_FINDER_HOME || (fs.existsSync(LEGACY_ENV) ? PROJECT_ROOT : path.join(os.homedir(), '.lead-finder'));
+const ENV_FILE = path.join(DATA_DIR, '.env');
 const ENV_EXAMPLE = path.join(PROJECT_ROOT, '.env.example');
 
 // ── Required config fields ─────────────────────────────────────────────
@@ -207,7 +210,8 @@ function saveEnv(vars) {
   lines.push('# ── Database ──');
   lines.push(`DB_PATH=leads.db`);
 
-  fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n');
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n', { mode: 0o600 });
   console.log(`\n✓ Configuration saved to ${ENV_FILE}`);
 }
 
@@ -266,4 +270,5 @@ module.exports = {
   runConfigWizard,
   checkEnvComplete,
   ENV_FILE,
+  DATA_DIR,
 };

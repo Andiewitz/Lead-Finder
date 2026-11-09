@@ -27,7 +27,12 @@ from dotenv import load_dotenv
 
 from src import classifier, db, discovery, sender, writer
 
-load_dotenv()
+_legacy_env = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+_data_dir = os.environ.get("LEAD_FINDER_HOME") or (
+    os.path.dirname(_legacy_env) if os.path.isfile(_legacy_env)
+    else os.path.join(os.path.expanduser("~"), ".lead-finder")
+)
+load_dotenv(os.path.join(_data_dir, ".env"))
 
 # ── Configuration ──────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -49,7 +54,8 @@ FROM_COMPANY = os.getenv("FROM_COMPANY", "")
 VALUE_PROP = os.getenv("VALUE_PROP", "I build custom websites for small businesses")
 
 DAILY_LIMIT = int(os.getenv("DAILY_LIMIT", "20"))
-DB_PATH = os.getenv("DB_PATH", "leads.db")
+DB_PATH = os.getenv("DB_PATH") or os.path.join(_data_dir, "leads.db")
+os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
 
 
 # ── Validation ─────────────────────────────────────────────────────────

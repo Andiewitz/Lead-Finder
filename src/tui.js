@@ -23,8 +23,7 @@ const path = require('path');
 
 const { green, red, yellow, cyan, magenta, bold, dim, gray } = chalk;
 
-const PROJECT_ROOT = path.resolve(__dirname, '..');
-const ENV_FILE = path.join(PROJECT_ROOT, '.env');
+const { ENV_FILE, DATA_DIR } = require('./config');
 
 /**
  * Print a styled banner/header
@@ -60,7 +59,7 @@ async function welcome() {
  */
 async function configWizard() {
   banner('Interactive Setup', 'Configure your lead outreach system');
-  console.log(`${dim('All values are saved to .env (gitignored — never committed)')}\n`);
+  console.log(`${dim(`Settings are saved to ${ENV_FILE}`)}\n`);
 
   const existing = require('fs').existsSync(ENV_FILE)
     ? loadExistingEnv()
@@ -70,9 +69,8 @@ async function configWizard() {
     {
       type: 'password',
       name: 'OPENROUTER_API_KEY',
-      message: 'OpenRouter API Key',
+      message: 'OpenRouter API Key (optional)',
       initial: existing.OPENROUTER_API_KEY || '',
-      required: true,
       hint: 'Get it from https://openrouter.ai/keys',
       mask: true,
       format: (val) => val.trim(),
@@ -184,7 +182,7 @@ async function configWizard() {
   // Save to .env
   saveEnv(allVars);
 
-  console.log(`\n${green('✓ Configuration saved to .env')}`);
+  console.log(`\n${green(`✓ Configuration saved to ${ENV_FILE}`)}`);
   console.log(`${dim('Run: lead-finder start to begin')}\n`);
 }
 
@@ -240,11 +238,12 @@ function saveEnv(vars) {
   lines.push(`SEARCH_API_URL=${vars.SEARCH_API_URL || "https://api.tavily.com/search"}`);
   lines.push('');
   lines.push('# ── Database ──');
-  lines.push(`DB_PATH=${vars.DB_PATH || "leads.db"}`);
+  lines.push(`DB_PATH=${vars.DB_PATH || path.join(DATA_DIR, 'leads.db')}`);
   lines.push(`PORTFOLIO_URL=${vars.PORTFOLIO_URL || ""}`);
   lines.push(`GITHUB_URL=${vars.GITHUB_URL || ""}`);
 
-  fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n');
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n', { mode: 0o600 });
 }
 
 /**
