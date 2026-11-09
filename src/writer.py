@@ -85,8 +85,8 @@ def write_email(
     from_name: str,
     from_company: str,
     value_prop: str,
-    portfolio_url: str = "https://web-dev-portfolio-swart.vercel.app/",
-    github_url: str = "https://github.com/Andiewitz",
+    portfolio_url: str = "",
+    github_url: str = "",
     openrouter_api_key: Optional[str] = None,
 ) -> str:
     """
@@ -111,8 +111,8 @@ def write_email(
         - Reference the specific verified detail above
         - One or two concrete ways a website could help THIS business
         - Include: "My name is {from_name}, and I'm a web developer who builds websites for small businesses."
-        - Include portfolio: {portfolio_url}
-        - Include GitHub: {github_url}
+        - Include portfolio if provided: {portfolio_url or "not provided"}
+        - Include GitHub if provided: {github_url or "not provided"}
         - End with one low-pressure question
         - Sign off: "Best,\n{from_name}"
 
@@ -130,6 +130,12 @@ def write_email(
     # Template-based fallback
     tip = CATEGORY_TIPS.get(category, CATEGORY_TIPS["services"])
 
+    links = ""
+    if portfolio_url:
+        links += f"\nPortfolio: {portfolio_url}\n"
+    if github_url:
+        links += f"\nGitHub: {github_url}\n"
+
     body = f"""Hi {company} team,
 
 I came across {company} while researching local {category} businesses in Portland and noticed you offer {category} services to the community.
@@ -138,12 +144,7 @@ A dedicated website could be a useful way to showcase your work and help more lo
 
 My name is {from_name}, and I'm a web developer who builds websites for small businesses.
 
-Here's my portfolio:
-{portfolio_url}
-
-You can also check out my projects on GitHub:
-{github_url}
-
+{links}
 Would you be open to a quick conversation about what a website for {company} could look like?
 
 Best,

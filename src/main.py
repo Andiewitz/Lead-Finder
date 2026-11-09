@@ -57,9 +57,9 @@ IMAP_HOST = os.getenv("IMAP_HOST", "imap.gmail.com")
 IMAP_USER = os.getenv("IMAP_USER")
 IMAP_PASS = os.getenv("IMAP_PASS")
 
-FROM_NAME = os.getenv("FROM_NAME", "Andrei")
+FROM_NAME = os.getenv("FROM_NAME", "")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
-FROM_COMPANY = os.getenv("FROM_COMPANY", "Andrei Freelance Web Development")
+FROM_COMPANY = os.getenv("FROM_COMPANY", "")
 VALUE_PROP = os.getenv("VALUE_PROP", "I build custom websites for small businesses")
 
 DAILY_LIMIT = int(os.getenv("DAILY_LIMIT", "20"))
@@ -259,6 +259,7 @@ def main() -> None:
     send_parser.add_argument('--company', type=str, default='', help='Company name')
     send_parser.add_argument('--personalization', type=str, default='', help='Verified detail about the business')
     send_parser.add_argument('--category', type=str, default='services', help='Business category')
+    send_parser.add_argument('--preview', action='store_true', help='Generate a draft without sending')
 
     # check-replies - poll IMAP for replies
     subparsers.add_parser('check-replies', help='Poll IMAP inbox and classify replies')
@@ -361,13 +362,22 @@ def cmd_find_leads(args):
 
 def cmd_send_email(args):
     """Generate and send one email after reserving quota and checking suppression."""
-    if not SMTP_USER or not SMTP_PASS or not FROM_EMAIL:
+    if not FROM_NAME:
+        raise SystemExit("FROM_NAME is required")
+    if not args.preview and (not SMTP_USER or not SMTP_PASS or not FROM_EMAIL):
         raise SystemExit("SMTP_USER, SMTP_PASS and FROM_EMAIL are required")
     company = args.company or args.email.split('@')[0]
     email_body = writer.write_email(company, args.personalization or 'Local business',
                                     args.category, FROM_NAME, FROM_COMPANY, VALUE_PROP,
+                                    portfolio_url=os.getenv("PORTFOLIO_URL", ""),
+                                    github_url=os.getenv("GITHUB_URL", ""),
                                     openrouter_api_key=OPENROUTER_API_KEY)
+    if writer.OPT_OUT_FOOTER not in email_body:
+        email_body += writer.OPT_OUT_FOOTER
     subject = writer.make_subject(company)
+    if args.preview:
+        print(json.dumps({"sent": False, "preview": True, "email": args.email, "subject": subject, "body": email_body}, indent=2))
+        return
     record = {
         "business_name": company, "business_category": args.category,
         "public_business_email": args.email, "email_source_url": "manual",
@@ -382,7 +392,6 @@ def cmd_send_email(args):
         sys.exit(1)
     from html import escape
     full_html = f"<p>{escape(email_body).replace(chr(10), '<br>')}</p>"
-    full_html += "<p><small>This is a commercial email. To opt out of future messages, reply with STOP.</small></p>"
     success = sender.send_email(args.email, subject, full_html, SMTP_HOST, SMTP_PORT,
                                 SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL)
     if not success:

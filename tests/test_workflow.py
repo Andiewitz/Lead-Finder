@@ -88,3 +88,18 @@ def test_mcp_tool_returns_protocol_content(tmp_path):
     result = next(m['result'] for m in messages if m.get('id') == 2)
     assert result['content'][0]['type'] == 'text'
     assert json.loads(result['content'][0]['text'])['success'] is True
+
+
+def test_preview_never_sends_or_reserves(tmp_path, monkeypatch):
+    path = str(tmp_path / 'preview.db')
+    monkeypatch.setattr(main, 'DB_PATH', path)
+    monkeypatch.setattr(main, 'FROM_NAME', 'Tester')
+    monkeypatch.setattr(main, 'OPENROUTER_API_KEY', None)
+    main.db.init_db(path)
+    args = argparse.Namespace(email='person@example.com', company='Example', personalization='', category='services', preview=True)
+    with patch.object(main.sender, 'send_email') as send, contextlib.redirect_stdout(io.StringIO()) as out:
+        main.cmd_send_email(args)
+    send.assert_not_called()
+    assert json.loads(out.getvalue())['preview'] is True
+    assert main.db.get_stats(path)['draft'] == 0
+    assert 'github.com/Andiewitz' not in out.getvalue()

@@ -68,7 +68,7 @@ async function configWizard() {
 
   const answers = await prompt([
     {
-      type: 'input',
+      type: 'password',
       name: 'OPENROUTER_API_KEY',
       message: 'OpenRouter API Key',
       initial: existing.OPENROUTER_API_KEY || '',
@@ -79,7 +79,7 @@ async function configWizard() {
       result: (val) => val.trim(),
     },
     {
-      type: 'input',
+      type: 'password',
       name: 'SEARCH_API_KEY',
       message: 'Tavily Search API Key',
       initial: existing.SEARCH_API_KEY || '',
@@ -114,7 +114,7 @@ async function configWizard() {
       type: 'input',
       name: 'FROM_NAME',
       message: 'Your Name',
-      initial: existing.FROM_NAME || 'Andrei',
+      initial: existing.FROM_NAME || '',
       required: true,
       hint: 'Appears as email sender',
       format: (val) => val.trim(),
@@ -237,10 +237,12 @@ function saveEnv(vars) {
   lines.push('');
   lines.push('# ── Search API (Tavily) ──');
   lines.push(`SEARCH_API_KEY=${vars.SEARCH_API_KEY || ''}`);
-  lines.push(`SEARCH_API_URL=https://api.tavily.com/search`);
+  lines.push(`SEARCH_API_URL=${vars.SEARCH_API_URL || "https://api.tavily.com/search"}`);
   lines.push('');
   lines.push('# ── Database ──');
-  lines.push(`DB_PATH=leads.db`);
+  lines.push(`DB_PATH=${vars.DB_PATH || "leads.db"}`);
+  lines.push(`PORTFOLIO_URL=${vars.PORTFOLIO_URL || ""}`);
+  lines.push(`GITHUB_URL=${vars.GITHUB_URL || ""}`);
 
   fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n');
 }
