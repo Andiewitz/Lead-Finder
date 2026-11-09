@@ -6,6 +6,7 @@ contact email addresses from search result snippets and website contact pages.
 """
 
 import re
+import sys
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -102,7 +103,7 @@ def web_search(
             for r in data.get("results", [])
         ]
     except requests.RequestException as e:
-        print(f"  Search error: {e}")
+        print(f"  Search error: {e}", file=sys.stderr)
         return []
 
 
@@ -133,11 +134,11 @@ def discover_leads(
 
     Returns a list of candidate dicts with title, url, and content fields.
     """
-    print(f"[1/6] Searching for {industry} in {location}...")
+    print(f"Searching for {industry} in {location}...", file=sys.stderr)
     queries = [
         f"{industry} {location} \"contact us\" email",
         f"{industry} {location} \"get a quote\"",
-        f"{industry} {location} \"serving Portland\"",
+        f"{industry} {location} \"local business\"",
     ]
     results: List[Dict[str, str]] = []
     for q in queries:

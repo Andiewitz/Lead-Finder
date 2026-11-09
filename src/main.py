@@ -229,216 +229,10 @@ def is_suspicious_email(email: str) -> bool:
 
 # ── Main pipeline ──────────────────────────────────────────────────────
 def run_once() -> None:
-    """Execute one full outreach run."""
-    if not validate_config():
-        sys.exit(1)
-
-    db.init_db(DB_PATH)
-
-    # Daily limit check
-    stats = db.get_stats(DB_PATH)
-    remaining = DAILY_LIMIT - stats["sent_today"]
-    if remaining <= 0:
-        print(f"Daily limit ({DAILY_LIMIT}) reached. Try again tomorrow.")
-        sender.send_confirmation_email(
-            0, 0, DAILY_LIMIT,
-            SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS,
-            FROM_NAME, FROM_EMAIL,
-        )
-        return
-
-    processed = 0
-
-    # ── Step 1: Send from whitelist first ────────────────────────────
-    whitelist_leads = db.get_whitelist_leads(remaining, DB_PATH)
-    for wl in whitelist_leads:
-        if processed >= remaining:
-            break
-        email_addr = wl["public_business_email"]
-        if db.email_exists(email_addr, "leads", DB_PATH):
-            continue
-        if db.is_blacklisted(email_addr, DB_PATH):
-            continue
-
-        new_id = db.move_whitelist_to_leads(wl["id"], DB_PATH)
-        if not new_id:
-            continue
-
-        html_body = f"<p>{wl['email_body'].replace(chr(10), '<br>')}</p>"
-        html_body += (
-            "<p><small>This is a commercial email. "
-            "To opt out of future messages, reply with STOP.</small></p>"
-        )
-        success = sender.send_email(
-            email_addr, wl["email_subject"], html_body,
-            SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS,
-            FROM_NAME, FROM_EMAIL,
-        )
-        if success:
-            db.mark_sent(new_id, "leads", DB_PATH)
-            print(f"  Sent (from whitelist): {wl['business_name']}")
-        else:
-            print(f"  Failed (from whitelist): {wl['business_name']}")
-        processed += 1
-        time.sleep(3)
-
-    # ── Step 2: Discover new leads ───────────────────────────────────
-    if processed < remaining:
-        remaining2 = remaining - processed
-        all_candidates: list = []
-        max_candidates = remaining2 * 4
-
-        for ind in INDUSTRIES:
-            for loc in LOCATIONS:
-                if len(all_candidates) >= max_candidates:
-                    break
-                rs = discovery.discover_leads(
-                    ind, loc, SEARCH_API_URL, SEARCH_API_KEY,
-                    count=min(remaining2, 5),
-                )
-                all_candidates.extend(rs)
-                time.sleep(0.5)
-            if len(all_candidates) >= max_candidates:
-                break
-
-        print(
-            f"\n[2/6] Found {len(all_candidates)} candidates. "
-            f"Processing up to {remaining2}..."
-        )
-
-        for cand in all_candidates:
-            if processed >= remaining2:
-                break
-
-            business_name = cand.get("title", "Unknown Business")
-            snippet = cand.get("content", "")
-            url = cand.get("url", "")
-
-            # Skip directories/aggregators
-            if any(d in url for d in SKIP_DOMAINS):
-                continue
-
-            # Skip excluded names
-            if is_excluded_name(business_name):
-                continue
-
-            # Skip website builder sites
-            if any(w in url.lower() for w in WEBSITE_BUILDER_INDICATORS):
-                continue
-
-            # Extract emails
-            found_emails, source_url = discovery.extract_emails_for_candidate(cand)
-            found_emails = discovery.filter_business_emails(found_emails)
-
-            if not found_emails:
-                print(f"  Skipping {business_name}: no business email found")
-                continue
-
-            email_addr = found_emails[0]
-
-            # Skip if already in DB or blacklisted
-            if db.email_exists(email_addr, "leads", DB_PATH):
-                print(f"  Skipping {business_name}: email already in database")
-                continue
-            if email_addr.lower() in [e.lower() for e in EXCLUSION_EMAILS]:
-                print(f"  Skipping {business_name}: in exclusion list")
-                continue
-            if db.is_blacklisted(email_addr, DB_PATH):
-                continue
-
-            # Clean business name
-            business_name = clean_business_name(business_name)
-
-            # Filter suspicious emails
-            if is_suspicious_email(email_addr):
-                print(f"  Skipping {business_name}: suspicious email {email_addr}")
-                continue
-
-            if is_excluded_name(business_name):
-                continue
-
-            # Categorize
-            category = categorize(business_name)
-
-            personalization_fact = snippet[:250] if snippet else (
-                f"{business_name} is a local {category} business serving Portland, Oregon"
-            )
-            if len(personalization_fact) < 10:
-                personalization_fact = (
-                    f"{business_name} serves the Portland, Oregon area."
-                )
-
-            email_body = writer.write_email(
-                business_name,
-                personalization_fact,
-                category,
-                FROM_NAME,
-                FROM_COMPANY,
-                VALUE_PROP,
-                openrouter_api_key=OPENROUTER_API_KEY,
-            )
-            subject = writer.make_subject(business_name)
-
-            record = {
-                "lead_number": processed + 1,
-                "business_name": business_name,
-                "business_category": category,
-                "city_state": LOCATIONS[0] if LOCATIONS else "Portland, OR",
-                "owner_contact_name": "UNKNOWN",
-                "public_business_email": email_addr,
-                "email_source_url": source_url,
-                "business_phone": "UNKNOWN",
-                "website_status": "NO WEBSITE",
-                "website_evidence": "No dedicated website found in search results",
-                "google_rating": None,
-                "google_review_count": None,
-                "google_business_profile_url": "UNKNOWN",
-                "recent_activity_date": "UNKNOWN",
-                "recent_activity_source_url": "UNKNOWN",
-                "personalization_fact": personalization_fact,
-                "personalization_source_url": url,
-                "qualification_status": "qualified",
-                "confidence_level": "medium",
-                "email_subject": subject,
-                "email_body": email_body,
-            }
-
-            # If quota full, save to whitelist
-            if processed >= remaining2:
-                db.add_to_whitelist(record, DB_PATH)
-                print(f"  Whitelisted (quota full): {business_name} ({email_addr})")
-                continue
-
-            lead_id = db.add_lead_record(record, "leads", DB_PATH)
-            print(f"  Qualified: {business_name} ({email_addr})")
-
-            html_body = f"<p>{email_body.replace(chr(10), '<br>')}</p>"
-            html_body += (
-                "<p><small>This is a commercial email. "
-                "To opt out of future messages, reply with STOP.</small></p>"
-            )
-            success = sender.send_email(
-                email_addr, subject, html_body,
-                SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS,
-                FROM_NAME, FROM_EMAIL,
-            )
-            if success:
-                db.mark_sent(lead_id, "leads", DB_PATH)
-                print(f"  Sent to {business_name}")
-            else:
-                print(f"  Failed to send to {business_name}")
-
-            processed += 1
-            time.sleep(3)
-
-    # ── Step 3: Confirmation ─────────────────────────────────────────
-    print(f"\n[3/6] Processed {processed} leads today.")
-    sender.send_confirmation_email(
-        processed, processed, DAILY_LIMIT,
-        SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS,
-        FROM_NAME, FROM_EMAIL,
-    )
-    print("Done.")
+    """Legacy entry point: discover candidates without sending outreach."""
+    print("The automatic outreach run has been replaced by discovery. "
+          "Review candidates and send individually with send-email.", file=sys.stderr)
+    cmd_find_leads(argparse.Namespace(industry="cleaning services", location="Portland, OR", count=10))
 
 
 def main() -> None:
@@ -451,7 +245,7 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest='command')
 
     # run - full pipeline (default)
-    subparsers.add_parser('run', help='Run full outreach pipeline (default)')
+    subparsers.add_parser('run', help='Discover candidates (legacy alias; never sends)')
 
     # find-leads - discover new leads
     find_parser = subparsers.add_parser('find-leads', help='Discover new leads via Tavily search')
@@ -502,12 +296,13 @@ def main() -> None:
 
 def cmd_find_leads(args):
     """Discover leads and print results as JSON."""
-    all_candidates = []
-    for ind in INDUSTRIES:
-        for loc in LOCATIONS:
-            rs = discovery.discover_leads(ind, loc, SEARCH_API_URL, SEARCH_API_KEY, count=args.count)
-            all_candidates.extend(rs)
-            time.sleep(0.5)
+    if not SEARCH_API_KEY:
+        raise SystemExit("SEARCH_API_KEY is required for discovery")
+    if args.count < 1 or args.count > 100:
+        raise SystemExit("count must be between 1 and 100")
+    all_candidates = discovery.discover_leads(
+        args.industry, args.location, SEARCH_API_URL, SEARCH_API_KEY, count=args.count
+    )
 
     # Filter and extract emails
     results = []
@@ -553,13 +348,15 @@ def cmd_find_leads(args):
         results.append({
             "business_name": clean_name,
             "category": category,
-            "location": loc if 'loc' in dir() else "Portland, OR",
+            "location": args.location,
             "email": email_addr,
             "source_url": source_url or url,
             "personalization_fact": personalization_fact,
+            "qualification_status": "needs review",
+            "evidence_note": "Search snippet is unverified; review the source before outreach.",
         })
 
-    print(json.dumps({"leads": results, "count": len(results)}, indent=2))
+    print(json.dumps({"leads": results[:args.count], "count": min(len(results), args.count)}, indent=2))
 
 
 def cmd_send_email(args):
