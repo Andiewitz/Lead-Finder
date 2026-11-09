@@ -468,3 +468,24 @@ process.argv[2]='--tui'; require('./bin/lead-finder');
     assert proc.returncode == 0
     assert 'Exact subject' in proc.stdout and 'Exact body' in proc.stdout
     assert '"send-draft","--id","42"' in proc.stdout
+
+
+def test_authentication_failure_restores_draft_for_retry(tmp_path, monkeypatch):
+    import pytest
+
+    from src import sender
+    path = str(tmp_path / 'auth.db')
+    for key, value in {'DB_PATH': path, 'FROM_NAME': 'Tester', 'OPENROUTER_API_KEY': None,
+                       'SMTP_USER': 'me@example.com', 'SMTP_PASS': 'bad', 'FROM_EMAIL': 'me@example.com',
+                       'SMTP_PORT': '587', 'DAILY_LIMIT': '5'}.items():
+        monkeypatch.setattr(main, key, value)
+    main.db.init_db(path)
+    args = argparse.Namespace(email='person@example.com', company='Example', personalization='', category='services', preview=False)
+    out = io.StringIO()
+    with patch.object(sender, 'send_email', side_effect=sender.DeliveryNotSentError('login rejected')), contextlib.redirect_stdout(out):
+        with pytest.raises(SystemExit):
+            main.cmd_send_email(args)
+    result = json.loads(out.getvalue())
+    assert result['status'] == 'not-sent'
+    assert main.db.get_draft(result['draft_id'], path) is not None
+    assert main.db.get_pending_sends(path) == []
