@@ -37,3 +37,33 @@ def test_send_reservation_enforces_suppression_and_quota(tmp_path):
         db.reserve_send({'public_business_email': 'b@other.com'}, 1, path)
     db.mark_sent(first, db_path=path)
     assert db.get_stats(path)['sent_today'] == 1
+
+
+def test_reply_poll_suppresses_known_sender_once(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+    from src import db
+    path = str(tmp_path / 'replies.db')
+    monkeypatch.setattr(main, 'DB_PATH', path)
+    monkeypatch.setattr(main, 'IMAP_USER', 'me@example.com')
+    monkeypatch.setattr(main, 'IMAP_PASS', 'test')
+    monkeypatch.setattr(main, 'OPENROUTER_API_KEY', None)
+    db.init_db(path)
+    lead_id = db.add_lead_record({'public_business_email': 'lead@example.com'}, db_path=path)
+    db.mark_sent(lead_id, db_path=path)
+    mail = MagicMock()
+    message = b'From: Lead <lead@example.com>\r\nMessage-ID: <one@example.com>\r\nSubject: Re: Hello\r\n\r\nPlease unsubscribe me.'
+    mail.uid.side_effect = lambda command, *args: ('OK', [b'1']) if command == 'search' else ('OK', [(b'1', message)])
+    with patch('imaplib.IMAP4_SSL', return_value=mail), contextlib.redirect_stdout(io.StringIO()) as out:
+        main.cmd_check_replies()
+        main.cmd_check_replies()
+    assert db.is_blacklisted('LEAD@example.com', path)
+    assert '"suppressed": true' in out.getvalue()
+    assert '"count": 0' in out.getvalue()
+
+
+def test_ai_not_interested_is_not_classed_as_interested():
+    from src import classifier
+    response = {'choices': [{'message': {'content': 'Not interested'}}]}
+    with patch('src.classifier.requests.post') as post:
+        post.return_value.json.return_value = response
+        assert classifier._classify_with_ai('no', 'key') == 'Not interested'

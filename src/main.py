@@ -394,61 +394,69 @@ def cmd_send_email(args):
 
 
 def cmd_check_replies():
-    """Check IMAP for replies."""
+    """Classify messages from known leads and suppress explicit opt-outs."""
     if not IMAP_USER or not IMAP_PASS:
         print(json.dumps({"error": "IMAP not configured"}))
-        return
-
+        sys.exit(1)
+    import imaplib
+    import email as email_module
+    from email.utils import parseaddr
+    import re
+    mail = None
     try:
-        import imaplib
-        import email as email_module
-
         mail = imaplib.IMAP4_SSL(IMAP_HOST, timeout=10)
         mail.login(IMAP_USER, IMAP_PASS)
         mail.select("inbox")
         date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-        status, messages = mail.search(None, f'(SINCE {date_since})')
-
+        status, messages = mail.uid('search', None, f'(SINCE {date_since})')
+        if status != 'OK':
+            raise RuntimeError('Unable to search inbox')
         replies = []
-        for msg_id in messages[0].split():
-            status, data = mail.fetch(msg_id, "(RFC822)")
+        for uid in messages[0].split():
+            status, data = mail.uid('fetch', uid, '(RFC822)')
+            if status != 'OK' or not data or not isinstance(data[0], tuple):
+                continue
             msg = email_module.message_from_bytes(data[0][1])
-            from_addr = msg.get("From", "")
-            subject = msg.get("Subject", "")
-            body = ""
-            if msg.is_multipart():
-                for part in msg.walk():
-                    if part.get_content_type() == "text/plain":
-                        body = part.get_payload(decode=True).decode(errors="ignore")
+            address = parseaddr(msg.get('From', ''))[1].strip().lower()
+            key = msg.get('Message-ID') or f"{IMAP_USER}:{uid.decode()}"
+            conn = db.get_connection(DB_PATH)
+            try:
+                if conn.execute('SELECT 1 FROM processed_replies WHERE message_key=?', (key,)).fetchone():
+                    continue
+                leads = conn.execute("SELECT id FROM leads WHERE sending_status='sent' AND lower(trim(public_business_email))=?", (address,)).fetchall()
+                if not leads:
+                    continue
+                parts = msg.walk() if msg.is_multipart() else [msg]
+                body = ''
+                for part in parts:
+                    if part.get_content_type() == 'text/plain' and part.get_content_disposition() != 'attachment':
+                        raw = part.get_payload(decode=True) or b''
+                        body = raw.decode(part.get_content_charset() or 'utf-8', errors='replace')
                         break
-            else:
-                body = msg.get_payload(decode=True).decode(errors="ignore")
-
-            full_text = f"{from_addr} {subject} {body}"
-            classification = classifier.classify_reply(full_text, OPENROUTER_API_KEY)
-
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute("SELECT id, business_name FROM leads WHERE sending_status='sent'")
-            for lead_id, business_name in c.fetchall():
-                if business_name.lower() in (from_addr + subject).lower():
-                    c.execute("UPDATE leads SET qualification_status=? WHERE id=?",
-                              (classification.lower(), lead_id))
-            conn.commit()
-            conn.close()
-
-            replies.append({
-                "from": from_addr,
-                "subject": subject,
-                "classification": classification,
-                "body_preview": body[:200],
-            })
-
-        mail.logout()
+                body = re.split(r'(?im)^\s*(?:On .+ wrote:|From:|>).*$', body, maxsplit=1)[0]
+                classification = classifier.classify_reply(body, OPENROUTER_API_KEY)
+                opt_out = any(phrase in body.lower() for phrase in ('stop', 'unsubscribe', 'remove me', "don't email", 'do not contact'))
+                for lead in leads:
+                    conn.execute('UPDATE leads SET qualification_status=? WHERE id=?', (classification.lower(), lead['id']))
+                if opt_out:
+                    conn.execute('INSERT OR IGNORE INTO blacklist (email, reason) VALUES (?, ?)', (address, 'Opt-out reply'))
+                conn.execute('INSERT INTO processed_replies (message_key) VALUES (?)', (key,))
+                conn.commit()
+                replies.append({"from": address, "subject": msg.get('Subject', ''),
+                                "classification": classification, "suppressed": opt_out,
+                                "body_preview": body[:200]})
+            finally:
+                conn.close()
         print(json.dumps({"replies": replies, "count": len(replies)}, indent=2))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:
+                pass
 
 
 def cmd_status():

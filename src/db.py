@@ -130,6 +130,10 @@ def init_db(db_path: str = "leads.db") -> None:
         """
     )
 
+    c.execute("""CREATE TABLE IF NOT EXISTS processed_replies (
+        message_key TEXT PRIMARY KEY, processed_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )""")
+
     # ── Migration: add lead_number to existing whitelist tables ──────
     try:
         c.execute("ALTER TABLE whitelist ADD COLUMN lead_number INTEGER")

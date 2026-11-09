@@ -102,7 +102,7 @@ def _classify_with_ai(
         )
         resp.raise_for_status()
         result = resp.json()["choices"][0]["message"]["content"].strip()
-        for kw in ["interested", "not interested", "out of office", "other"]:
+        for kw in ["not interested", "out of office", "interested", "other"]:
             if kw in result.lower():
                 if kw == "out of office":
                     return "Out of office"
