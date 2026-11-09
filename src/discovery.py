@@ -71,6 +71,10 @@ def extract_emails_from_url(url: str, timeout: int = 8) -> List[str]:
     return []
 
 
+class SearchError(Exception):
+    """A search could not be completed."""
+
+
 def web_search(
     query: str,
     search_api_url: str,
@@ -101,9 +105,19 @@ def web_search(
             }
             for r in data.get("results", [])
         ]
-    except requests.RequestException as e:
-        print(f"  Search error: {e}", file=sys.stderr)
-        return []
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        if status in (401, 403):
+            message = "Tavily rejected the search key. Check SEARCH_API_KEY in your settings."
+        elif status == 429:
+            message = "Tavily rate limit or quota reached. Try again later or check your account."
+        else:
+            message = f"Tavily search failed (HTTP {status or 'unknown'}). Try again later."
+        raise SearchError(message) from exc
+    except requests.RequestException as exc:
+        raise SearchError("Could not reach Tavily. Check your connection and try again.") from exc
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise SearchError("Tavily returned an invalid response. Try again later.") from exc
 
 
 def is_directory_site(url: str) -> bool:

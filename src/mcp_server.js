@@ -218,7 +218,8 @@ async function handleSendEmail(args) {
   ]);
 
   if (result.status !== 0) {
-    return { success: false, error: result.stderr || 'Failed to send email' };
+    let detail; try { detail = JSON.parse(result.stdout); } catch (_) {}
+    return { success: false, error: detail?.error || result.stderr || 'Failed to send email', ...(detail || {}) };
   }
 
   try { return { success: true, ...JSON.parse(result.stdout) }; }
@@ -229,7 +230,8 @@ async function handleCheckReplies(args) {
   const result = runPython(['check-replies']);
 
   if (result.status !== 0) {
-    return { success: false, error: result.stderr || 'Unknown error' };
+    let detail; try { detail = JSON.parse(result.stdout); } catch (_) {}
+    return { success: false, error: detail?.error || result.stderr || 'Unknown error' };
   }
 
   try {

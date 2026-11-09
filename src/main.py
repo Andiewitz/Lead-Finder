@@ -18,7 +18,13 @@ _data_dir = os.environ.get("LEAD_FINDER_HOME") or (
     os.path.dirname(_legacy_env) if os.path.isfile(_legacy_env)
     else os.path.join(os.path.expanduser("~"), ".lead-finder")
 )
-load_dotenv(os.path.join(_data_dir, ".env"))
+_env_file = os.path.join(_data_dir, ".env")
+try:
+    with open(_env_file, encoding="utf-8") as _settings:
+        _managed_config = _settings.readline().startswith("# Lead Finder settings. Environment variables take precedence.")
+except FileNotFoundError:
+    _managed_config = False
+load_dotenv(_env_file, interpolate=not _managed_config)
 
 # ── Configuration ──────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -26,7 +32,7 @@ SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
 SEARCH_API_URL = os.getenv("SEARCH_API_URL", "https://api.tavily.com/search")
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_PORT = os.getenv("SMTP_PORT", "587")
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 
@@ -39,7 +45,7 @@ FROM_EMAIL = os.getenv("FROM_EMAIL")
 FROM_COMPANY = os.getenv("FROM_COMPANY", "")
 VALUE_PROP = os.getenv("VALUE_PROP", "I build custom websites for small businesses")
 
-DAILY_LIMIT = int(os.getenv("DAILY_LIMIT", "20"))
+DAILY_LIMIT = os.getenv("DAILY_LIMIT", "20")
 DB_PATH = os.getenv("DB_PATH") or os.path.join(_data_dir, "leads.db")
 os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
 
@@ -276,12 +282,15 @@ def main() -> None:
 def cmd_find_leads(args):
     """Discover leads and print results as JSON."""
     if not SEARCH_API_KEY:
-        raise SystemExit("SEARCH_API_KEY is required for discovery")
+        raise SystemExit("Discovery needs a Tavily SEARCH_API_KEY. Run lead-finder --config or set the environment variable.")
     if args.count < 1 or args.count > 100:
         raise SystemExit("count must be between 1 and 100")
-    all_candidates = discovery.discover_leads(
-        args.industry, args.location, SEARCH_API_URL, SEARCH_API_KEY, count=args.count
-    )
+    try:
+        all_candidates = discovery.discover_leads(
+            args.industry, args.location, SEARCH_API_URL, SEARCH_API_KEY, count=args.count
+        )
+    except discovery.SearchError as exc:
+        raise SystemExit(str(exc)) from exc
 
     # Filter and extract emails
     results = []
@@ -341,9 +350,17 @@ def cmd_find_leads(args):
 def cmd_send_email(args):
     """Generate and send one email after reserving quota and checking suppression."""
     if not FROM_NAME:
-        raise SystemExit("FROM_NAME is required")
+        raise SystemExit("A sender name is needed for a draft. Set FROM_NAME with lead-finder --config.")
     if not args.preview and (not SMTP_USER or not SMTP_PASS or not FROM_EMAIL):
-        raise SystemExit("SMTP_USER, SMTP_PASS and FROM_EMAIL are required")
+        raise SystemExit("Sending requires SMTP_USER, SMTP_PASS and FROM_EMAIL. Run lead-finder --config.")
+    if not args.preview:
+        try:
+            smtp_port = int(SMTP_PORT)
+            daily_limit = int(DAILY_LIMIT)
+            if not 1 <= smtp_port <= 65535 or daily_limit < 1:
+                raise ValueError
+        except ValueError as exc:
+            raise SystemExit("SMTP_PORT must be 1–65535 and DAILY_LIMIT must be a positive whole number.") from exc
     company = args.company or args.email.split('@')[0]
     email_body = writer.write_email(company, args.personalization or 'Local business',
                                     args.category, FROM_NAME, FROM_COMPANY, VALUE_PROP,
@@ -354,7 +371,7 @@ def cmd_send_email(args):
         email_body += writer.OPT_OUT_FOOTER
     subject = writer.make_subject(company)
     if args.preview:
-        print(json.dumps({"sent": False, "preview": True, "email": args.email, "subject": subject, "body": email_body}, indent=2))
+        print(json.dumps({"sent": False, "preview": True, "writer": "AI or template fallback" if OPENROUTER_API_KEY else "template", "email": args.email, "subject": subject, "body": email_body}, indent=2))
         return
     record = {
         "business_name": company, "business_category": args.category,
@@ -364,13 +381,13 @@ def cmd_send_email(args):
         "email_body": email_body,
     }
     try:
-        lead_id = db.reserve_send(record, DAILY_LIMIT, DB_PATH)
+        lead_id = db.reserve_send(record, daily_limit, DB_PATH)
     except ValueError as exc:
         print(json.dumps({"sent": False, "error": str(exc)}))
         sys.exit(1)
     from html import escape
     full_html = f"<p>{escape(email_body).replace(chr(10), '<br>')}</p>"
-    success = sender.send_email(args.email, subject, full_html, SMTP_HOST, SMTP_PORT,
+    success = sender.send_email(args.email, subject, full_html, SMTP_HOST, smtp_port,
                                 SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL)
     if not success:
         db.mark_send_uncertain(lead_id, DB_PATH)

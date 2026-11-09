@@ -68,10 +68,10 @@ def chat(
                 import time
                 time.sleep(wait)
                 continue
-            print(f"  OpenRouter error: {e}", file=sys.stderr)
+            print(f"  OpenRouter error: {e}; using template fallback", file=sys.stderr)
             return None
         except Exception as e:
-            print(f"  OpenRouter request failed: {e}", file=sys.stderr)
+            print(f"  OpenRouter request failed: {e}; using template fallback", file=sys.stderr)
             return None
     print("  OpenRouter max retries reached, using template fallback", file=sys.stderr)
     return None
