@@ -360,58 +360,37 @@ def cmd_find_leads(args):
 
 
 def cmd_send_email(args):
-    """Send a single personalized email."""
-    html_body = f"<p>{args.personalization.replace(chr(10), '<br>') if args.personalization else ''}</p>"
-    email_body = writer.write_email(
-        args.company or args.email.split('@')[0],
-        args.personalization or 'Local business',
-        args.category,
-        FROM_NAME,
-        FROM_COMPANY,
-        VALUE_PROP,
-        openrouter_api_key=OPENROUTER_API_KEY,
-    )
-    subject = writer.make_subject(args.company or args.email)
-
-    full_html = f"<p>{email_body.replace(chr(10), '<br>')}</p>"
-    full_html += "<p><small>This is a commercial email. To opt out of future messages, reply with STOP.</small></p>"
-
-    success = sender.send_email(
-        args.email, subject, full_html,
-        SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS,
-        FROM_NAME, FROM_EMAIL,
-    )
-
-    if success:
-        record = {
-            "lead_number": 1,
-            "business_name": args.company or args.email.split('@')[0],
-            "business_category": args.category,
-            "city_state": "Portland, OR",
-            "owner_contact_name": "UNKNOWN",
-            "public_business_email": args.email,
-            "email_source_url": "manual",
-            "business_phone": "UNKNOWN",
-            "website_status": "NO WEBSITE",
-            "website_evidence": "Manual email send",
-            "google_rating": None,
-            "google_review_count": None,
-            "google_business_profile_url": "UNKNOWN",
-            "recent_activity_date": "UNKNOWN",
-            "recent_activity_source_url": "UNKNOWN",
-            "personalization_fact": args.personalization or "Local business",
-            "personalization_source_url": "manual",
-            "qualification_status": "qualified",
-            "confidence_level": "medium",
-            "email_subject": subject,
-            "email_body": email_body,
-        }
-        lead_id = db.add_lead_record(record, "leads", DB_PATH)
-        db.mark_sent(lead_id, "leads", DB_PATH)
-        print(json.dumps({"sent": True, "email": args.email, "lead_id": lead_id}))
-    else:
-        print(json.dumps({"sent": False, "email": args.email}))
+    """Generate and send one email after reserving quota and checking suppression."""
+    if not SMTP_USER or not SMTP_PASS or not FROM_EMAIL:
+        raise SystemExit("SMTP_USER, SMTP_PASS and FROM_EMAIL are required")
+    company = args.company or args.email.split('@')[0]
+    email_body = writer.write_email(company, args.personalization or 'Local business',
+                                    args.category, FROM_NAME, FROM_COMPANY, VALUE_PROP,
+                                    openrouter_api_key=OPENROUTER_API_KEY)
+    subject = writer.make_subject(company)
+    record = {
+        "business_name": company, "business_category": args.category,
+        "public_business_email": args.email, "email_source_url": "manual",
+        "website_status": "UNKNOWN", "qualification_status": "needs review",
+        "personalization_fact": args.personalization, "email_subject": subject,
+        "email_body": email_body,
+    }
+    try:
+        lead_id = db.reserve_send(record, DAILY_LIMIT, DB_PATH)
+    except ValueError as exc:
+        print(json.dumps({"sent": False, "error": str(exc)}))
         sys.exit(1)
+    from html import escape
+    full_html = f"<p>{escape(email_body).replace(chr(10), '<br>')}</p>"
+    full_html += "<p><small>This is a commercial email. To opt out of future messages, reply with STOP.</small></p>"
+    success = sender.send_email(args.email, subject, full_html, SMTP_HOST, SMTP_PORT,
+                                SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL)
+    if not success:
+        db.mark_send_failed(lead_id, DB_PATH)
+        print(json.dumps({"sent": False, "email": args.email, "lead_id": lead_id}))
+        sys.exit(1)
+    db.mark_sent(lead_id, "leads", DB_PATH)
+    print(json.dumps({"sent": True, "email": args.email, "lead_id": lead_id}))
 
 
 def cmd_check_replies():

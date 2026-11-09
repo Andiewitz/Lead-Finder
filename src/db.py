@@ -10,6 +10,7 @@ All tables are indexed on email, name, status, and date columns for fast lookups
 """
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -235,13 +236,53 @@ def email_exists(email_addr: str, table: str = "leads", db_path: str = "leads.db
 
 
 def is_blacklisted(email_addr: str, db_path: str = "leads.db") -> bool:
-    """Check if an email is on the blacklist."""
+    """Match addresses and exact domains case-insensitively."""
+    address = email_addr.strip().lower()
+    domain = address.rpartition("@")[2]
+    with closing(get_connection(db_path)) as conn:
+        return conn.execute(
+            "SELECT 1 FROM blacklist WHERE lower(trim(email)) IN (?, ?, ?) LIMIT 1",
+            (address, domain, "@" + domain),
+        ).fetchone() is not None
+
+
+def reserve_send(data: Dict[str, Any], daily_limit: int, db_path: str) -> int:
+    """Atomically reserve quota and a recipient before contacting SMTP.
+
+    An interrupted send remains reserved until an operator reviews it; this is
+    deliberate because SMTP may have accepted a message before a crash.
+    """
+    address = data.get("public_business_email", "").strip().lower()
+    import re
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", address):
+        raise ValueError("Invalid recipient email address")
+    domain = address.rsplit("@", 1)[1]
     conn = get_connection(db_path)
-    c = conn.cursor()
-    c.execute("SELECT id FROM blacklist WHERE email=?", (email_addr,))
-    row = c.fetchone()
-    conn.close()
-    return row is not None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute("SELECT 1 FROM blacklist WHERE lower(trim(email)) IN (?, ?, ?)",
+                        (address, domain, "@" + domain)).fetchone():
+            raise ValueError("Recipient is on the do-not-contact list")
+        if conn.execute("SELECT 1 FROM leads WHERE lower(trim(public_business_email))=? AND sending_status IN ('sent', 'sending')", (address,)).fetchone():
+            raise ValueError("Recipient has already been contacted or has a pending send")
+        today = datetime.now(timezone.utc).date().isoformat()
+        count = conn.execute("SELECT COUNT(*) FROM leads WHERE (sending_status='sent' AND date(sent_timestamp)=?) OR (sending_status='sending' AND date(created_at)=?)", (today, today)).fetchone()[0]
+        if count >= daily_limit:
+            raise ValueError("Daily email limit reached (UTC)")
+        data = dict(data, public_business_email=address)
+        columns = LEAD_COLUMNS + ["sending_status"]
+        values = [data.get(col) for col in LEAD_COLUMNS] + ["sending"]
+        cursor = conn.execute(f"INSERT INTO leads ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})", values)
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def mark_send_failed(lead_id: int, db_path: str) -> None:
+    with closing(get_connection(db_path)) as conn:
+        conn.execute("UPDATE leads SET sending_status='failed' WHERE id=?", (lead_id,))
+        conn.commit()
 
 
 def add_to_blacklist(email_addr: str, business_name: str = "", reason: str = "", db_path: str = "leads.db") -> None:
@@ -251,7 +292,7 @@ def add_to_blacklist(email_addr: str, business_name: str = "", reason: str = "",
     try:
         c.execute(
             "INSERT OR IGNORE INTO blacklist (email, business_name, reason) VALUES (?, ?, ?)",
-            (email_addr, business_name, reason),
+            (email_addr.strip().lower(), business_name, reason),
         )
         conn.commit()
     except sqlite3.Error:
