@@ -135,9 +135,11 @@ def write_email(
     if github_url:
         links += f"\nGitHub: {github_url}\n"
 
+    detail = f" I noticed: {personalization_fact.strip()}" if personalization_fact and personalization_fact.strip().lower() != "local business" else ""
+
     body = f"""Hi {company} team,
 
-I came across {company} while researching {category} businesses.
+I came across {company} while researching {category} businesses.{detail}
 
 A dedicated website could be a useful way to showcase your work and help more local customers find you. It could feature photos of completed projects, explain your service options, and give potential customers an easy way to request a quote. {tip}
 

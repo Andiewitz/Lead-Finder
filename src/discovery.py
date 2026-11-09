@@ -53,7 +53,7 @@ def extract_emails(text: str) -> List[str]:
     if not text:
         return []
     pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-    return list(set(re.findall(pattern, text)))
+    return list(dict.fromkeys(re.findall(pattern, text)))
 
 
 def extract_emails_from_url(url: str, timeout: int = 8) -> List[str]:
@@ -131,8 +131,15 @@ def has_website_builder(url: str) -> bool:
 
 
 def filter_business_emails(emails: List[str]) -> List[str]:
-    """Filter out common non-business email domains."""
-    return [e for e in emails if not any(d in e.lower() for d in NON_BUSINESS_DOMAINS)]
+    """Keep unique valid addresses, including businesses using public mailboxes."""
+    seen = set()
+    result = []
+    for email in emails:
+        value = email.strip()
+        if value.lower() not in seen and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+            seen.add(value.lower())
+            result.append(value)
+    return result
 
 
 def discover_leads(

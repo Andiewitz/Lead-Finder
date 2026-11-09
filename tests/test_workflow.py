@@ -344,3 +344,10 @@ def test_smtp_outcomes_and_review_resolution(tmp_path):
     assert db.resolve_pending_send(lead, False, path)
     assert db.get_draft(lead, path) is not None
     assert not db.resolve_pending_send(lead, False, path)
+
+
+def test_public_mailboxes_and_personalization_are_preserved():
+    from src import discovery, writer
+    assert discovery.filter_business_emails(['owner@gmail.com', 'OWNER@gmail.com', 'a@outlook.com']) == ['owner@gmail.com', 'a@outlook.com']
+    body = writer.write_email('Example', 'won a local award', 'services', 'Tester', '', '', openrouter_api_key=None)
+    assert 'won a local award' in body

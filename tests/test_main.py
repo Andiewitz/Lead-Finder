@@ -360,7 +360,7 @@ class TestDiscovery(unittest.TestCase):
         filtered = discovery.filter_business_emails(emails)
         self.assertIn("owner@biz.com", filtered)
         self.assertIn("info@company.com", filtered)
-        self.assertNotIn("john@gmail.com", filtered)
+        self.assertIn("john@gmail.com", filtered)
 
     def test_is_directory_site(self):
         self.assertTrue(discovery.is_directory_site("https://yelp.com/biz/abc"))
