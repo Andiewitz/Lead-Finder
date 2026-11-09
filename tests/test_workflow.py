@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 from unittest.mock import patch
+
 from src import main
 
 
@@ -23,8 +24,9 @@ def test_find_leads_uses_requested_search_and_does_not_send(tmp_path, monkeypatc
 
 
 def test_send_reservation_enforces_suppression_and_quota(tmp_path):
-    from src import db
     import pytest
+
+    from src import db
     path = str(tmp_path / 'reserve.db')
     db.init_db(path)
     db.add_to_blacklist('Example.COM', db_path=path)
@@ -41,6 +43,7 @@ def test_send_reservation_enforces_suppression_and_quota(tmp_path):
 
 def test_reply_poll_suppresses_known_sender_once(tmp_path, monkeypatch):
     from unittest.mock import MagicMock
+
     from src import db
     path = str(tmp_path / 'replies.db')
     monkeypatch.setattr(main, 'DB_PATH', path)
@@ -107,6 +110,7 @@ def test_preview_never_sends_or_reserves(tmp_path, monkeypatch):
 
 def test_uncertain_send_blocks_retry_and_consumes_quota(tmp_path):
     import pytest
+
     from src import db
     path = str(tmp_path / 'uncertain.db')
     db.init_db(path)

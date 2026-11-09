@@ -12,7 +12,6 @@ All tables are indexed on email, name, status, and date columns for fast lookups
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 LEAD_COLUMNS = [

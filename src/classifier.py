@@ -5,6 +5,7 @@ Primary: OpenRouter Nemotron for reply classification.
 Fallback: Keyword-based classification when OpenRouter is unavailable.
 """
 
+import sys
 from typing import Optional
 
 import requests
@@ -107,8 +108,8 @@ def _classify_with_ai(
                 if kw == "out of office":
                     return "Out of office"
                 return kw.capitalize()
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"Reply classification failed: {exc}", file=sys.stderr)
     return None
 
 

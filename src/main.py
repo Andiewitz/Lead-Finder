@@ -1,7 +1,7 @@
 """
-Main orchestrator for Andrei's Web Dev Client Acquisition.
+Lead discovery and individual outreach commands.
 
-Runs the full pipeline:
+Legacy pipeline (retired):
 1. Load config from environment
 2. Initialize database
 3. Check daily limit
@@ -17,31 +17,17 @@ Runs the full pipeline:
 import argparse
 import json
 import os
-import sqlite3
 import sys
-import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 # Ensure src package is importable when run directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
-from src import db
-from src import discovery
-from src import writer
-from src import sender
-from src import classifier
+
+from src import classifier, db, discovery, sender, writer
 
 load_dotenv()
-
-from src import db
-from src import discovery
-from src import writer
-from src import sender
-from src import classifier
-
-load_dotenv()
-
 
 # ── Configuration ──────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -407,10 +393,10 @@ def cmd_check_replies():
     if not IMAP_USER or not IMAP_PASS:
         print(json.dumps({"error": "IMAP not configured"}))
         sys.exit(1)
-    import imaplib
     import email as email_module
-    from email.utils import parseaddr
+    import imaplib
     import re
+    from email.utils import parseaddr
     mail = None
     try:
         mail = imaplib.IMAP4_SSL(IMAP_HOST, timeout=10)
@@ -464,8 +450,8 @@ def cmd_check_replies():
         if mail:
             try:
                 mail.logout()
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"IMAP logout failed: {exc}", file=sys.stderr)
 
 
 def cmd_status():

@@ -5,11 +5,10 @@ Primary: OpenRouter Nemotron 3.5 Super VL for personalized cold emails.
 Fallback: Template-based emails when OpenRouter is rate-limited or unavailable.
 """
 
+import sys
 from typing import Optional
 
 import requests
-import sys
-
 
 # Category-specific tips for template emails
 CATEGORY_TIPS = {

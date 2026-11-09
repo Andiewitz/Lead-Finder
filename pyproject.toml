@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Autonomous lead outreach automation for web development client acquisition"
 readme = "README.md"
 requires-python = ">=3.10"
+dependencies = ["requests>=2.31.0", "python-dotenv>=1.0.0"]
 authors = [
     {name = "Andrei", email = "gracefulandrei@gmail.com"},
 ]
@@ -46,14 +47,19 @@ dev = [
 email-sender = "src.main:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
 include = ["src*"]
 
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "S", "W"]
 ignore = ["E501", "S105", "S106", "S107", "S307", "S310", "S603", "S607", "S608"]
 
-[tool.ruff.isort]
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "E402"]
+"src/main.py" = ["E402"]
+
+[tool.ruff.lint.isort]
 known-first-party = ["src"]

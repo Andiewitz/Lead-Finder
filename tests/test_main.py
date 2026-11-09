@@ -6,22 +6,18 @@ Uses mocks — no real API calls or emails sent during tests.
 
 import os
 import sys
-import unittest
-from unittest.mock import patch, MagicMock
-from datetime import datetime
 import tempfile
+import unittest
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/../src")
 
 from dotenv import load_dotenv
+
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env.test"))
 
 import main
-from src import db
-from src import writer
-from src import classifier
-from src import discovery
-from src import sender
+from src import classifier, db, discovery, sender, writer
 
 
 class TestOpenRouterChat(unittest.TestCase):

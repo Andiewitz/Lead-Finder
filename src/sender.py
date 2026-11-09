@@ -4,10 +4,10 @@ Email sender module.
 Handles SMTP sending via Gmail and confirmation emails to the operator.
 """
 
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import smtplib
 import sys
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 
 def send_email(

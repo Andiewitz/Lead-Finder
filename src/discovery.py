@@ -7,10 +7,9 @@ contact email addresses from search result snippets and website contact pages.
 
 import re
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import requests
-
 
 # Directories and aggregators that don't represent real businesses
 SKIP_DOMAINS = [
