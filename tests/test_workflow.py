@@ -351,3 +351,48 @@ def test_public_mailboxes_and_personalization_are_preserved():
     assert discovery.filter_business_emails(['owner@gmail.com', 'OWNER@gmail.com', 'a@outlook.com']) == ['owner@gmail.com', 'a@outlook.com']
     body = writer.write_email('Example', 'won a local award', 'services', 'Tester', '', '', openrouter_api_key=None)
     assert 'won a local award' in body
+
+
+def test_dashboard_reports_failed_stats_instead_of_zeroes(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, LEAD_FINDER_HOME=str(tmp_path))
+    script = """
+Object.defineProperty(process.stdin, 'isTTY', {value: true});
+const enquirer = require.resolve('enquirer');
+require.cache[enquirer] = {id:enquirer, filename:enquirer, loaded:true, exports:{prompt: async () => ({action:'exit'})}};
+require('child_process').spawnSync = () => ({status:null, error:new Error('Python missing')});
+process.argv[2] = 'start';
+require('./bin/lead-finder');
+"""
+    proc = subprocess.run(['node', '-e', script], cwd=root, env=env, capture_output=True,
+                          text=True, encoding='utf8', timeout=10)
+    assert proc.returncode == 0
+    assert 'Could not load campaign statistics' in proc.stderr
+    assert 'Emails sent today:' not in proc.stdout
+
+
+def test_terminal_discovery_passes_user_search_values(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, LEAD_FINDER_HOME=str(tmp_path))
+    script = """
+const enquirer = require.resolve('enquirer');
+let calls = 0;
+require.cache[enquirer] = {id:enquirer, filename:enquirer, loaded:true, exports:{prompt: async q => {
+  if (Array.isArray(q)) return {industry:'plumber', location:'Seattle', count:'3'};
+  return {action: calls++ ? 'exit' : 'find-leads'};
+}}};
+require('child_process').spawnSync = (bin, args) => { console.log('ARGS:' + JSON.stringify(args)); return {status:0}; };
+process.stdin.once = (event, callback) => { if (event === 'data') process.nextTick(callback); return process.stdin; };
+process.argv[2] = '--tui';
+require('./bin/lead-finder');
+"""
+    proc = subprocess.run(['node', '-e', script], cwd=root, env=env, capture_output=True,
+                          text=True, encoding='utf8', timeout=10)
+    assert proc.returncode == 0
+    assert '"--industry","plumber","--location","Seattle","--count","3"' in proc.stdout

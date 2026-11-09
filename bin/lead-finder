@@ -38,6 +38,16 @@ function runPython(args = []) {
   return result.status == null ? 1 : result.status;
 }
 
+async function findLeadsInteractive() {
+  const answers = await prompt([
+    { type: 'input', name: 'industry', message: 'Industry:', initial: 'cleaning services', required: true },
+    { type: 'input', name: 'location', message: 'Location:', initial: 'Portland, OR', required: true },
+    { type: 'input', name: 'count', message: 'Maximum candidates (1–100):', initial: '10',
+      validate: value => (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 100) || 'Enter a number from 1 to 100' },
+  ]);
+  runPython(['find-leads', '--industry', answers.industry, '--location', answers.location, '--count', String(answers.count)]);
+}
+
 async function previewAndSend(email, company, personalization, category) {
   const result = spawnSync(PYTHON_BIN, [MAIN_SCRIPT, 'send-email', '--email', email,
     '--company', company || '', '--personalization', personalization || '',
@@ -101,14 +111,15 @@ async function runDashboardTUI() {
       encoding: 'utf-8',
       env: { ...process.env },
     });
-    let parsedStats = {};
-    try {
-      parsedStats = JSON.parse(statsResult.stdout);
-    } catch (e) {
-      parsedStats = {};
+    if (statsResult.error || statsResult.status !== 0) {
+      console.error(`Could not load campaign statistics: ${statsResult.error?.message || statsResult.stderr?.trim() || 'Python failed'}`);
+    } else {
+      try {
+        dashboard(JSON.parse(statsResult.stdout));
+      } catch (_) {
+        console.error('Could not load campaign statistics: invalid response from Python.');
+      }
     }
-
-    dashboard(parsedStats);
 
     const { action } = await prompt({
       type: 'select',
@@ -127,7 +138,7 @@ async function runDashboardTUI() {
 
     switch (action) {
       case 'find-leads':
-        runPython(['find-leads']);
+        await findLeadsInteractive();
         break;
       case 'send-email': {
         const { email } = await prompt({
@@ -206,7 +217,7 @@ async function runTUI() {
         running = false;
         break;
       case 'find-leads':
-        runPython(['find-leads']);
+        await findLeadsInteractive();
         break;
       case 'send-email': {
         const { email } = await prompt({
