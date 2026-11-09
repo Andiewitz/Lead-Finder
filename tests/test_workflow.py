@@ -235,3 +235,48 @@ def test_blacklist_failure_does_not_report_success():
         with pytest.raises(sqlite3.OperationalError):
             main.cmd_blacklist(argparse.Namespace(email='test@example.com', reason='opt out'))
     assert 'blacklisted' not in out.getvalue()
+
+
+def test_html_reply_and_common_opt_out_are_processed(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from src import db
+    path = str(tmp_path / 'html.db')
+    monkeypatch.setattr(main, 'DB_PATH', path)
+    monkeypatch.setattr(main, 'IMAP_USER', 'me@example.com')
+    monkeypatch.setattr(main, 'IMAP_PASS', 'test')
+    monkeypatch.setattr(main, 'OPENROUTER_API_KEY', None)
+    db.init_db(path)
+    lead = db.add_lead_record({'public_business_email': 'lead@example.com'}, db_path=path)
+    db.mark_sent(lead, db_path=path)
+    msg = (b'From: lead@example.com\r\nMessage-ID: <html@x>\r\n'
+           b'Content-Type: text/html; charset=utf-8\r\n\r\n'
+           b'<p>Please take me off your list.</p><blockquote>Earlier text</blockquote>')
+    mail = MagicMock()
+    mail.uid.side_effect = lambda cmd, *args: ('OK', [b'1']) if cmd == 'search' else ('OK', [(b'1', msg)])
+    with patch('imaplib.IMAP4_SSL', return_value=mail), contextlib.redirect_stdout(io.StringIO()):
+        main.cmd_check_replies()
+    assert db.is_blacklisted('lead@example.com', path)
+    mail.uid.assert_any_call('search', None, 'ALL')
+    mail.uid.assert_any_call('fetch', b'1', '(BODY.PEEK[])')
+
+
+def test_unreadable_reply_is_not_marked_processed(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from src import db
+    path = str(tmp_path / 'empty.db')
+    monkeypatch.setattr(main, 'DB_PATH', path)
+    monkeypatch.setattr(main, 'IMAP_USER', 'me@example.com')
+    monkeypatch.setattr(main, 'IMAP_PASS', 'test')
+    db.init_db(path)
+    lead = db.add_lead_record({'public_business_email': 'lead@example.com'}, db_path=path)
+    db.mark_sent(lead, db_path=path)
+    mail = MagicMock()
+    msg = b'From: lead@example.com\r\nMessage-ID: <empty@x>\r\nContent-Type: image/png\r\n\r\nxx'
+    mail.uid.side_effect = lambda cmd, *args: ('OK', [b'1']) if cmd == 'search' else ('OK', [(b'1', msg)])
+    out = io.StringIO()
+    with patch('imaplib.IMAP4_SSL', return_value=mail), contextlib.redirect_stdout(out):
+        main.cmd_check_replies()
+        main.cmd_check_replies()
+    assert out.getvalue().count('Needs review') == 2

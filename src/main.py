@@ -4,7 +4,6 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timedelta
 
 # Ensure src package is importable when run directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -397,6 +396,68 @@ def cmd_send_email(args):
     print(json.dumps({"sent": True, "email": args.email, "lead_id": lead_id}))
 
 
+def _reply_text(message):
+    """Return an unquoted text body; use HTML only if plain text is absent."""
+    import re
+    from html.parser import HTMLParser
+
+    class TextExtractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.text = []
+            self.skip = 0
+
+        def handle_starttag(self, tag, attrs):
+            if self.skip:
+                if tag not in ('br', 'img', 'hr', 'input', 'meta', 'link', 'wbr'):
+                    self.skip += 1
+            elif tag in ('blockquote', 'script', 'style') or 'gmail_quote' in dict(attrs).get('class', ''):
+                self.skip = 1
+            elif tag in ('p', 'br', 'div', 'li'):
+                self.text.append('\n')
+
+        def handle_startendtag(self, tag, attrs):
+            if tag == 'br' and not self.skip:
+                self.text.append('\n')
+
+        def handle_endtag(self, tag):
+            if self.skip:
+                self.skip -= 1
+
+        def handle_data(self, data):
+            if not self.skip:
+                self.text.append(data)
+
+    parts = message.walk() if message.is_multipart() else [message]
+    plain, html = [], []
+    for part in parts:
+        if part.get_content_disposition() == 'attachment':
+            continue
+        kind = part.get_content_type()
+        if kind not in ('text/plain', 'text/html'):
+            continue
+        raw = part.get_payload(decode=True) or b''
+        try:
+            text = raw.decode(part.get_content_charset() or 'utf-8', errors='replace')
+        except LookupError:
+            text = raw.decode('utf-8', errors='replace')
+        (plain if kind == 'text/plain' else html).append(text)
+    text = next((x for x in plain if x.strip()), '')
+    if not text and html:
+        parser = TextExtractor()
+        parser.feed(html[0])
+        text = ''.join(parser.text)
+    return re.split(r'(?im)^\s*(?:On .+ wrote:|From:|>).*$', text, maxsplit=1)[0].strip()
+
+
+def _is_opt_out(body):
+    import re
+    return bool(re.search(
+        r"\b(?:unsubscribe|stop(?: emailing| contacting)?|remove (?:me|us)|take (?:me|us) off|"
+        r"(?:do not|don't) (?:email|contact)|no more emails|not interested)\b", body, re.I
+    ))
+
+
 def cmd_check_replies():
     """Classify messages from known leads and suppress explicit opt-outs."""
     if not IMAP_USER or not IMAP_PASS:
@@ -404,20 +465,18 @@ def cmd_check_replies():
         sys.exit(1)
     import email as email_module
     import imaplib
-    import re
     from email.utils import parseaddr
     mail = None
     try:
         mail = imaplib.IMAP4_SSL(IMAP_HOST, timeout=10)
         mail.login(IMAP_USER, IMAP_PASS)
         mail.select("inbox")
-        date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-        status, messages = mail.uid('search', None, f'(SINCE {date_since})')
+        status, messages = mail.uid('search', None, 'ALL')
         if status != 'OK':
             raise RuntimeError('Unable to search inbox')
         replies = []
         for uid in messages[0].split():
-            status, data = mail.uid('fetch', uid, '(RFC822)')
+            status, data = mail.uid('fetch', uid, '(BODY.PEEK[])')
             if status != 'OK' or not data or not isinstance(data[0], tuple):
                 continue
             msg = email_module.message_from_bytes(data[0][1])
@@ -430,16 +489,14 @@ def cmd_check_replies():
                 leads = conn.execute("SELECT id FROM leads WHERE sending_status='sent' AND lower(trim(public_business_email))=?", (address,)).fetchall()
                 if not leads:
                     continue
-                parts = msg.walk() if msg.is_multipart() else [msg]
-                body = ''
-                for part in parts:
-                    if part.get_content_type() == 'text/plain' and part.get_content_disposition() != 'attachment':
-                        raw = part.get_payload(decode=True) or b''
-                        body = raw.decode(part.get_content_charset() or 'utf-8', errors='replace')
-                        break
-                body = re.split(r'(?im)^\s*(?:On .+ wrote:|From:|>).*$', body, maxsplit=1)[0]
+                body = _reply_text(msg)
+                if not body:
+                    replies.append({"from": address, "subject": msg.get('Subject', ''),
+                                    "classification": "Needs review", "suppressed": False,
+                                    "error": "No readable body; review this message manually."})
+                    continue
                 classification = classifier.classify_reply(body, OPENROUTER_API_KEY)
-                opt_out = any(phrase in body.lower() for phrase in ('stop', 'unsubscribe', 'remove me', "don't email", 'do not contact'))
+                opt_out = _is_opt_out(body)
                 for lead in leads:
                     conn.execute('UPDATE leads SET qualification_status=? WHERE id=?', (classification.lower(), lead['id']))
                 if opt_out:
