@@ -97,7 +97,7 @@ def write_email(
     # Try AI writer first
     if openrouter_api_key:
         prompt = f"""
-        Write a personalized cold email to {company} ({category} business in Portland, OR).
+        Write a personalized cold email to {company} ({category} business).
 
         Verified detail about them: {personalization_fact}
 
@@ -137,7 +137,7 @@ def write_email(
 
     body = f"""Hi {company} team,
 
-I came across {company} while researching local {category} businesses in Portland and noticed you offer {category} services to the community.
+I came across {company} while researching {category} businesses.
 
 A dedicated website could be a useful way to showcase your work and help more local customers find you. It could feature photos of completed projects, explain your service options, and give potential customers an easy way to request a quote. {tip}
 

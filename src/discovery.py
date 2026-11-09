@@ -1,7 +1,7 @@
 """
 Lead discovery module.
 
-Uses Tavily web search to find Portland-area small businesses and extracts
+Uses Tavily web search to find small businesses and extracts
 contact email addresses from search result snippets and website contact pages.
 """
 

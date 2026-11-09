@@ -1,18 +1,4 @@
-"""
-Lead discovery and individual outreach commands.
-
-Legacy pipeline (retired):
-1. Load config from environment
-2. Initialize database
-3. Check daily limit
-4. Send from whitelist first (previously found, unsent)
-5. Discover new leads via Tavily search
-6. Filter, deduplicate, extract emails
-7. Write personalized emails (OpenRouter primary, template fallback)
-8. Send via Gmail SMTP
-9. Send confirmation email
-10. Track replies via IMAP
-"""
+"""Lead discovery and individual outreach commands."""
 
 import argparse
 import json
@@ -236,7 +222,7 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(dest='command')
 
-    # run - full pipeline (default)
+    # Legacy discovery alias
     subparsers.add_parser('run', help='Discover candidates (legacy alias; never sends)')
 
     # find-leads - discover new leads
@@ -270,7 +256,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Default: run full pipeline
+    # Default: discovery only
     if args.command is None or args.command == 'run':
         run_once()
     elif args.command == 'find-leads':
@@ -336,7 +322,7 @@ def cmd_find_leads(args):
             clean_name = clean_name.replace(suffix, "").strip()
 
         category = categorize(clean_name)
-        personalization_fact = snippet[:250] if snippet else f"{clean_name} is a local {category} business serving Portland, Oregon"
+        personalization_fact = snippet[:250] if snippet else f"{clean_name} is listed as a {category} business; verify details before outreach."
 
         results.append({
             "business_name": clean_name,
