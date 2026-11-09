@@ -25,7 +25,7 @@ const { welcome, configWizard, mainMenu, dashboard } = require('../src/tui');
 const { green, red, yellow, cyan, gray } = chalk;
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const PYTHON_BIN = process.env.LEAD_FINDER_PYTHON || 'python3';
+const PYTHON_BIN = process.env.LEAD_FINDER_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 const MAIN_SCRIPT = path.join(PROJECT_ROOT, 'src', 'main.py');
 
 function runPython(args = []) {
@@ -142,7 +142,23 @@ async function runDashboardTUI() {
             { name: 'pressure washing', message: 'Pressure Washing' },
           ],
         });
-        runPython(['send-email', '--email', email, '--company', company || '', '--personalization', personalization || '', '--category', category]);
+        const { nextStep } = await prompt({
+          type: 'select', name: 'nextStep', message: 'Choose an action:',
+          choices: [
+            { name: 'preview', message: 'Preview a draft (no email sent)' },
+            { name: 'send', message: 'Generate and send now' },
+            { name: 'cancel', message: 'Cancel' },
+          ],
+        });
+        if (nextStep !== 'cancel') {
+          if (nextStep === 'send') {
+            const { confirmed } = await prompt({ type: 'confirm', name: 'confirmed',
+              message: `Send an email to ${email} now?`, initial: false });
+            if (!confirmed) break;
+          }
+          runPython(['send-email', '--email', email, '--company', company || '', '--personalization', personalization || '', '--category', category, ...(nextStep === 'preview' ? ['--preview'] : [])]);
+          if (nextStep === 'preview') console.log('A later send generates a new draft; its wording may differ.');
+        }
         break;
       }
       case 'check-replies':
@@ -222,7 +238,23 @@ async function runTUI() {
             { name: 'pressure washing', message: 'Pressure Washing' },
           ],
         });
-        runPython(['send-email', '--email', email, '--company', company || '', '--personalization', personalization || '', '--category', category]);
+        const { nextStep } = await prompt({
+          type: 'select', name: 'nextStep', message: 'Choose an action:',
+          choices: [
+            { name: 'preview', message: 'Preview a draft (no email sent)' },
+            { name: 'send', message: 'Generate and send now' },
+            { name: 'cancel', message: 'Cancel' },
+          ],
+        });
+        if (nextStep !== 'cancel') {
+          if (nextStep === 'send') {
+            const { confirmed } = await prompt({ type: 'confirm', name: 'confirmed',
+              message: `Send an email to ${email} now?`, initial: false });
+            if (!confirmed) break;
+          }
+          runPython(['send-email', '--email', email, '--company', company || '', '--personalization', personalization || '', '--category', category, ...(nextStep === 'preview' ? ['--preview'] : [])]);
+          if (nextStep === 'preview') console.log('A later send generates a new draft; its wording may differ.');
+        }
         break;
       }
       case 'check-replies':

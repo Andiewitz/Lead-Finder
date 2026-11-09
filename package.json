@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/mcp_server.js",
     "dev": "node src/mcp_server.js",
-    "test": "echo \"Tests run via Python pytest\" && exit 0",
+    "test": "python -m pytest tests -q",
     "install:python": "pip install -r requirements.txt && pip install python-dotenv requests"
   },
   "keywords": [

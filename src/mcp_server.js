@@ -25,7 +25,7 @@ const fs = require('fs');
 const readline = require('readline');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const PYTHON_BIN = process.env.LEAD_FINDER_PYTHON || 'python3';
+const PYTHON_BIN = process.env.LEAD_FINDER_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 const MAIN_SCRIPT = path.join(PROJECT_ROOT, 'src', 'main.py');
 const ENV_FILE = path.join(PROJECT_ROOT, '.env');
 
@@ -90,6 +90,7 @@ const TOOLS = [
           type: 'string',
           description: 'Verified detail about the business to reference in the email',
         },
+        preview: { type: 'boolean', description: 'Generate a draft without sending; later generation may differ.' },
         category: {
           type: 'string',
           description: 'Business category (cleaning, landscaping, handyman, etc.)',
@@ -213,13 +214,15 @@ async function handleSendEmail(args) {
     '--company', args.company || '',
     '--personalization', args.personalization_fact || '',
     '--category', args.category || 'services',
+    ...(args.preview ? ['--preview'] : []),
   ]);
 
   if (result.status !== 0) {
     return { success: false, error: result.stderr || 'Failed to send email' };
   }
 
-  return { success: true, sent: true, email };
+  try { return { success: true, ...JSON.parse(result.stdout) }; }
+  catch (e) { return { success: false, error: 'Invalid response from email service' }; }
 }
 
 async function handleCheckReplies(args) {
