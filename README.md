@@ -1,300 +1,63 @@
-# Andrei's Web Dev Client Acquisition
+# Lead Finder
 
-Autonomous lead outreach automation for freelance web developers. Find Portland-area small businesses, research them, write personalized cold emails, send via Gmail SMTP, and track replies — all with zero OAuth, zero domain verification, and $0 in paid services.
+A terminal and MCP tool for discovering potential business leads, drafting individual outreach emails, and checking replies. Search results are **candidates**, not verified or qualified leads. Review the source, contact address, business details, and any message before outreach.
 
-## Features
+## Setup
 
-| Feature | Description |
-|---------|-------------|
-| **Lead Discovery** | Tavily web search finds Portland-area businesses (cleaning, landscaping, handyman, auto detailing, pet grooming, pressure washing) |
-| **AI Writing** | OpenRouter Nemotron 3.5 Super VL writes personalized cold emails (template fallback when rate-limited) |
-| **Email Sending** | Gmail SMTP — no domain verification, no paid email service |
-| **Reply Tracking** | IMAP monitoring with keyword-based classification (Interested / Not interested / Out of office) |
-| **Blacklist** | Permanent do-not-contact list |
-| **Whitelist** | Qualified leads saved when daily quota is full |
-| **Confirmation Email** | Summary sent to operator after every run |
-| **SQLite Database** | Indexed leads, blacklist, whitelist tables |
-| **CAN-SPAM Ready** | Opt-out footer in every email |
+Requirements: Node.js 18 or later and Python 3.10 or later. From the repository directory:
 
-## Interactive Setup (TUI)
-
-Run the config wizard to set up all your API keys one by one:
-
-```bash
+```sh
+npm install
+python -m pip install -r requirements.txt
+npm link
 lead-finder --config
 ```
 
-This prompts you for each value interactively (secrets are masked as you type):
+If the CLI cannot find Python, set `LEAD_FINDER_PYTHON` to the Python executable with the installed dependencies. The wizard stores settings in `~/.lead-finder/.env` and uses `~/.lead-finder/leads.db` by default. `LEAD_FINDER_HOME` can select another directory. An existing repository `.env` remains supported. Environment variables take precedence over the file. Protect this directory: it contains credentials and lead data.
 
-- **OpenRouter API Key** — from https://openrouter.ai/keys (powers AI email writing)
-- **Tavily Search API Key** — from https://tavily.com (free tier: 1,000 searches/month)
-- **Gmail Address** — your Gmail email for sending + IMAP
-- **Gmail App Password** — 16-char App Password from myaccount.google.com/apppasswords (NOT your Gmail password)
-- **Your Name** — appears as email sender
-- **Sender Email** — usually same as your Gmail
-- **Your Company** (optional)
-- **Your Value Proposition** (optional)
-- **Daily Email Limit** (optional, default: 20)
-- **IMAP Username/Password** (optional, same as SMTP for reply tracking)
+Tavily's `SEARCH_API_KEY` is needed for discovery. Sending requires `FROM_NAME`, `FROM_EMAIL`, `SMTP_USER`, and `SMTP_PASS`; reply checking requires IMAP credentials. OpenRouter is optional: without it the writer uses a template. Configure `PORTFOLIO_URL` and `GITHUB_URL` in the environment or settings file to include your own links.
 
-### TUI Menu
+## Workflow
 
-Launch the full interactive menu:
+```sh
+# Find candidates without sending email
+lead-finder find-leads --industry "handyman" --location "Portland, OR" --count 10
 
-```bash
-lead-finder --tui
-```
+# Generate a draft without sending
+lead-finder send-email --email person@example.com --company "Example" --personalization "A detail you verified" --preview
 
-Choose from:
-- **start** — Start MCP server (for OpenCode/KiloCode)
-- **find-leads** — Discover new leads via Tavily
-- **send-email** — Send a personalized cold email
-- **check-replies** — Poll IMAP inbox and classify replies
-- **status** — View campaign statistics
-- **config** — Edit settings
-- **exit** — Quit
+# Generate and send one message
+lead-finder send-email --email person@example.com --company "Example" --personalization "A detail you verified"
 
-### 3. Run
-
-```bash
-lead-finder start          # Start MCP server (for OpenCode/KiloCode)
-lead-finder find-leads     # Discover new leads via Tavily
-lead-finder send-email     # Send a personalized cold email
-lead-finder check-replies  # Poll IMAP inbox and classify replies
-lead-finder status         # View campaign statistics
-```
-
-### Python Dependencies
-
-The MCP server runs Python scripts that require:
-
-```bash
-pip install -r requirements.txt
-```
-
-Current dependencies: `requests`, `python-dotenv`
-
-### 4. Automate (Cron)
-
-The cron job runs weekdays at 14:00 UTC (9AM EST / 3PM CET):
-
-```bash
-0 14 * * 1-5 /path/to/venv/bin/python /path/to/Lead-Finder/src/main.py >> /path/to/Lead-Finder/logs.txt 2>&1
-```
-
-## Edit Config Anytime
-
-```bash
-lead-finder --config
-```
-
-Re-runs the wizard; any fields you leave blank keep their existing values. All settings are stored in `.env` (gitignored — never committed).
-
-
-
-## npm Package + MCP Server (OpenCode / KiloCode)
-
-Install `@andrewitz/lead-finder` from npm to use the lead outreach system as an MCP server in OpenCode or KiloCode:
-
-```bash
-npm install -g github:Andiewitz/Lead-Finder
-```
-
-Or from npm once published:
-
-```bash
-npm install -g @andrewitz/lead-finder
-```
-
-This installs the `lead-finder` CLI and the MCP server. **Run `lead-finder --config` first** to set up your API keys, then configure your AI assistant to connect to it:
-
-### OpenCode MCP Config (`~/.opencode/mcp.json` or `.mcp.opencode.json`)
-
-```json
-{
-  "mcpServers": {
-    "lead-finder": {
-      "command": "npx",
-      "args": ["-y", "@andrewitz/lead-finder@latest", "start"],
-      "env": {
-        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
-        "SEARCH_API_KEY": "${SEARCH_API_KEY}",
-        "SMTP_HOST": "smtp.gmail.com",
-        "SMTP_PORT": "587",
-        "SMTP_USER": "${SMTP_USER}",
-        "SMTP_PASS": "${SMTP_PASS}",
-        "IMAP_HOST": "imap.gmail.com",
-        "IMAP_USER": "${SMTP_USER}",
-        "IMAP_PASS": "${SMTP_PASS}",
-        "FROM_NAME": "Andrei",
-        "FROM_EMAIL": "${SMTP_USER}",
-        "FROM_COMPANY": "Andrei Freelance Web Development",
-        "VALUE_PROP": "I build custom websites for small businesses",
-        "DAILY_LIMIT": "20",
-        "DB_PATH": "${HOME}/.lead-finder/leads.db"
-      }
-    }
-  }
-}
-```
-
-### KiloCode MCP Config (`~/.kilocode/mcp.json` or `.mcp.kilocode.json`)
-
-```json
-{
-  "mcpServers": {
-    "lead-finder": {
-      "command": "npx",
-      "args": ["-y", "@andrewitz/lead-finder@latest", "start"],
-      "env": {
-        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
-        "SEARCH_API_KEY": "${SEARCH_API_KEY}",
-        "SMTP_HOST": "smtp.gmail.com",
-        "SMTP_PORT": "587",
-        "SMTP_USER": "${SMTP_USER}",
-        "SMTP_PASS": "${SMTP_PASS}",
-        "IMAP_HOST": "imap.gmail.com",
-        "IMAP_USER": "${SMTP_USER}",
-        "IMAP_PASS": "${SMTP_PASS}",
-        "FROM_NAME": "Andrei",
-        "FROM_EMAIL": "${SMTP_USER}",
-        "FROM_COMPANY": "Andrei Freelance Web Development",
-        "VALUE_PROP": "I build custom websites for small businesses",
-        "DAILY_LIMIT": "20",
-        "DB_PATH": "${HOME}/.lead-finder/leads.db"
-      }
-    }
-  }
-}
-```
-
-### Available MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `find_leads` | Discover Portland-area small businesses via Tavily web search |
-| `send_email` | Send a personalized cold email via Gmail SMTP |
-| `check_replies` | Poll IMAP inbox and classify replies (Interested / Not interested / Out of office) |
-| `get_stats` | View campaign statistics (sent today, total, drafts, whitelist, blacklist) |
-| `add_to_blacklist` | Add an email/domain to the permanent do-not-contact list |
-| `search_leads` | Search existing lead database by name, email, or category |
-
-### CLI Commands
-
-```bash
-# Start MCP server (for OpenCode/KiloCode) — auto-runs config if incomplete
-# When run in an interactive terminal (TTY), boots dashboard TUI instead
-lead-finder start
-
-# Launch interactive TUI menu (dashboard + all commands)
-lead-finder --tui
-
-# Interactive config wizard (edit settings anytime)
-lead-finder --config
-
-# Discover new leads
-lead-finder find-leads --industry "cleaning services" --location "Portland, OR"
-
-# Send a single email
-lead-finder send-email --email grace@example.com --company "Grace Cleaning" --personalization "They offer eco-friendly cleaning"
-
-# Check for replies
-lead-finder check-replies
-
-# View statistics
 lead-finder status
-
-# Blacklist an email
-lead-finder blacklist --email spam@example.com --reason "Spam complainer"
-
-# Search existing leads
-lead-finder search --query "handyman"
+lead-finder check-replies
+lead-finder blacklist --email example.com --reason "Do not contact"
+lead-finder search --query "Example"
+lead-finder --tui
 ```
 
-**Dashboard TUI:** When you run `lead-finder start` in an interactive terminal, it boots a full-screen dashboard showing campaign stats (sent today, total, drafts, whitelist, blacklist) with an action menu. When run via stdio (e.g., by OpenCode/KiloCode as an MCP server), it starts the MCP server instead.
+The terminal menu asks for confirmation before a send. A preview and a subsequent send each generate a draft; AI-generated wording may differ. The preview is not an approved draft that can be sent unchanged. The old `run` command now performs discovery only. It does not send queued or newly discovered leads. Existing whitelist data remains in the database but is not automatically sent.
 
+Discovery uses search snippets and publicly found addresses. It does not verify ratings, review counts, website status, recent activity, ownership of an address, or the accuracy of a snippet. The user must review these before contacting anyone. Search results and drafts can be sent to the configured search and AI providers, respectively; reply text may be sent to the AI provider when classification is enabled.
 
-## Architecture
+## Sending and replies
 
-```
-src/
-├── __init__.py
-├── db.py           # SQLite: leads, blacklist, whitelist + indexes
-├── discovery.py    # Tavily search + email extraction
-├── writer.py       # OpenRouter primary, template fallback
-├── sender.py       # Gmail SMTP + confirmation email
-├── classifier.py   # OpenRouter keyword reply classification
-└── main.py         # Orchestrator: full pipeline + CLI subcommands
+Each direct send checks the address and exact domain against the do-not-contact list, checks prior sends, and reserves the configured daily quota before connecting to SMTP. The limit resets at midnight UTC. The default is 20. Failed or interrupted SMTP operations can have an unknown outcome; these appear as `needs_send_review` in status and block another send to that recipient. Inspect the mailbox and database before resolving such a record; there is not yet a dedicated resolution command.
 
-bin/
-└── lead-finder     # CLI entry point
+Reply polling checks the past seven days of the configured inbox and matches sender addresses to previously sent leads. It records processed message IDs and suppresses addresses for several explicit opt-out phrases. Automated matching and classification can miss replies or opt-outs, especially replies from another address or unusual formats. Review the inbox and do-not-contact list manually as well.
 
-src/mcp_server.js   # MCP server over stdio (for OpenCode/KiloCode)
-```
+The footer is not a guarantee of legal compliance. Review applicable requirements and your message content before sending.
 
-### Database Tables
+## MCP
 
-| Table | Purpose |
-|-------|---------|
-| `leads` | Sent or attempted leads (22 fields per AI_AGENT_BRIEF.md) |
-| `blacklist` | Permanent do-not-contact emails |
-| `whitelist` | Qualified leads found but not sent (saved for future runs) |
+Run `lead-finder start` through stdio from your MCP client. The tools are `find_leads`, `send_email` (supports `preview`), `check_replies`, `get_stats`, `add_to_blacklist`, and `search_leads`. Supply settings through the environment or the configuration file. In an interactive terminal, `start` opens the dashboard instead.
 
-### Indexes
+## Development
 
-`leads(email)`, `leads(name)`, `leads(status)`, `leads(date)`, `blacklist(email)`, `whitelist(email)`, `whitelist(priority)`
-
-## Qualification Rules
-
-A business counts as a qualified lead only if ALL of the following are true:
-
-- **No website** (or verifiable upgrade opportunity)
-- **Google rating ≥ 4.0 stars** with 10–250 reviews
-- **Recent activity** within the past 6 months
-- **Public business email** (never guessed or constructed)
-- **Not on the exclusion list** (24 previously contacted businesses)
-- **Not a directory/aggregator** (Yelp, YellowPages, Thumbtack, etc.)
-- **Not a website builder site** (WordPress, Wix, Squarespace, etc.)
-
-## Email Format
-
-Every email follows the AI_AGENT_BRIEF.md template:
-
-- Short, non-deceptive subject line
-- Verified opening detail about the business
-- Concrete website benefits (category-specific)
-- "My name is Andrei, and I'm a web developer who builds websites for small businesses."
-- Portfolio + GitHub links
-- Low-pressure call to action
-- CAN-SPAM opt-out footer
-
-## Limits & Safety
-
-| Limit | Value |
-|-------|-------|
-| Default daily emails | 20 |
-| Gmail free tier | 500/day |
-| Recommended warm-up | Start at 20/day for 2 weeks |
-| Max recommended | 50/day |
-| Retry backoff | Exponential (1s, 2s, 4s, 8s, 16s) |
-
-## Testing
-
-```bash
-source venv/bin/activate
-python -m pytest tests/ -v
+```sh
+python -m pip install -r requirements.txt pytest ruff
+python -m pytest tests -q
+ruff check src tests
 ```
 
-21 unit tests covering all modules. CI runs on GitHub Actions for Python 3.10/3.11/3.12.
-
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
-## Disclaimer
-
-This tool automates cold email outreach. You are responsible for complying with CAN-SPAM, GDPR, and other applicable laws. Always include an opt-out mechanism and honor opt-out requests promptly.
-
-## Contributing
-
-Bug reports and pull requests are welcome. Please do not commit API keys or secrets. See [CONTRIBUTING.md](CONTRIBUTING.md) if it exists, or open an issue to discuss.
+The tests mock external services; a passing suite does not verify a real Tavily, SMTP, IMAP, or MCP client connection. The Python and Node CLI code is in `src/` and `bin/` respectively.
