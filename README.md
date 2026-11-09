@@ -17,6 +17,12 @@ If the CLI cannot find Python, set `LEAD_FINDER_PYTHON` to the Python executable
 
 Tavily's `SEARCH_API_KEY` is needed for discovery. Sending requires `FROM_NAME`, `FROM_EMAIL`, `SMTP_USER`, and `SMTP_PASS`; reply checking requires IMAP credentials. OpenRouter is optional: without it the writer uses a template. Configure `PORTFOLIO_URL` and `GITHUB_URL` in the environment or settings file to include your own links.
 
+## Missing or existing credentials
+
+All setup fields are optional. If you have no API keys, status, search of your local database, and blacklist management still work. A draft preview uses the built-in template without an OpenRouter key, but needs a sender name. Finding new leads requires a Tavily key; sending requires SMTP credentials and sender details; checking replies requires IMAP credentials. OpenRouter failures fall back to a template, while Tavily authentication, quota, and network failures are reported as errors instead of empty search results.
+
+You can skip setup and configure a service when you need it. When the wizard finds a saved configuration, it offers to keep it unchanged or edit it. During editing, blank answers retain saved values. To remove a saved value, edit the settings file directly. Environment variables override saved values, including when an environment variable is empty; update or remove the environment variable to use the saved value. Setup requires an interactive terminal. It does not validate credentials against external providers until a feature is used.
+
 ## Workflow
 
 ```sh

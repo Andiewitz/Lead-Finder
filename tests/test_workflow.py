@@ -120,3 +120,103 @@ def test_uncertain_send_blocks_retry_and_consumes_quota(tmp_path):
         db.reserve_send({'public_business_email': 'a@example.com'}, 1, path)
     with pytest.raises(ValueError, match='limit'):
         db.reserve_send({'public_business_email': 'b@example.com'}, 1, path)
+
+
+def _run_cli(tmp_path, *args, extra_env=None):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    for key in ('SEARCH_API_KEY', 'OPENROUTER_API_KEY', 'SMTP_USER', 'SMTP_PASS',
+                'FROM_NAME', 'FROM_EMAIL', 'IMAP_USER', 'IMAP_PASS', 'DB_PATH',
+                'SMTP_PORT', 'DAILY_LIMIT'):
+        env.pop(key, None)
+    env.update(LEAD_FINDER_HOME=str(tmp_path), **(extra_env or {}))
+    return subprocess.run([sys.executable, str(root / 'src' / 'main.py'), *args],
+                          cwd=root, env=env, text=True, capture_output=True, timeout=20)
+
+
+def test_missing_credentials_only_block_relevant_features(tmp_path):
+    status = _run_cli(tmp_path, 'status', extra_env={'SMTP_PORT': 'bad', 'DAILY_LIMIT': 'bad'})
+    assert status.returncode == 0
+    discovery = _run_cli(tmp_path, 'find-leads')
+    assert discovery.returncode != 0 and 'SEARCH_API_KEY' in discovery.stderr
+    preview = _run_cli(tmp_path, 'send-email', '--email', 'a@example.com', '--preview')
+    assert preview.returncode != 0 and 'FROM_NAME' in preview.stderr
+    preview = _run_cli(tmp_path, 'send-email', '--email', 'a@example.com', '--preview',
+                       extra_env={'FROM_NAME': 'Tester'})
+    assert preview.returncode == 0 and json.loads(preview.stdout)['writer'] == 'template'
+    sending = _run_cli(tmp_path, 'send-email', '--email', 'a@example.com',
+                       extra_env={'FROM_NAME': 'Tester'})
+    assert sending.returncode != 0 and 'SMTP_USER' in sending.stderr
+    replies = _run_cli(tmp_path, 'check-replies')
+    assert replies.returncode != 0 and 'IMAP not configured' in replies.stdout
+
+
+def test_config_roundtrip_preserves_special_values_and_environment_precedence(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    values = {'FROM_NAME': 'Saved "name"', 'CUSTOM_VALUE': 'C:\\some path\\${variable} # comment',
+              'FROM_COMPANY': 'Company #1'}
+    env = dict(os.environ, LEAD_FINDER_HOME=str(tmp_path))
+    script = "const c=require('./src/config'); let s=''; process.stdin.on('data',x=>s+=x); process.stdin.on('end',()=>{ c.saveEnv(JSON.parse(s)); console.log(JSON.stringify(c.loadExistingEnv())); });"
+    proc = subprocess.run(['node', '-e', script], cwd=root, env=env, input=json.dumps(values),
+                          text=True, capture_output=True, check=True)
+    assert json.loads(proc.stdout) == values
+    result = _run_cli(tmp_path, 'send-email', '--email', 'a@example.com', '--preview')
+    assert result.returncode == 0
+    assert 'Saved "name"' in json.loads(result.stdout)['body']
+    result = _run_cli(tmp_path, 'send-email', '--email', 'a@example.com', '--preview',
+                      extra_env={'FROM_NAME': 'Environment Name'})
+    assert 'Environment Name' in json.loads(result.stdout)['body']
+
+
+def test_search_authentication_and_network_errors_are_not_empty_results():
+    import pytest
+    import requests
+
+    from src import discovery
+    response = requests.Response()
+    response.status_code = 401
+    with patch('src.discovery.requests.post') as post:
+        post.return_value.raise_for_status.side_effect = requests.HTTPError(response=response)
+        with pytest.raises(discovery.SearchError, match='rejected'):
+            discovery.web_search('query', 'https://example.com', 'invalid')
+    with patch('src.discovery.requests.post', side_effect=requests.Timeout):
+        with pytest.raises(discovery.SearchError, match='reach Tavily'):
+            discovery.web_search('query', 'https://example.com', 'key')
+
+
+def test_setup_skip_and_existing_keep_preserve_configuration(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, LEAD_FINDER_HOME=str(tmp_path))
+    script = """
+Object.defineProperty(process.stdin, 'isTTY', {value: true});
+const key = require.resolve('enquirer');
+require.cache[key] = {id:key, filename:key, loaded:true,
+  exports:{prompt: async (questions) => Array.isArray(questions) ? {} : {choice: process.argv[1]}}};
+require('./src/tui').configWizard().catch(e => {console.error(e); process.exitCode=1});
+"""
+    first = subprocess.run(['node', '-e', script, 'edit'], cwd=root, env=env,
+                           capture_output=True, text=True, encoding='utf-8', timeout=10)
+    assert first.returncode == 0
+    config = tmp_path / '.env'
+    original = config.read_text(encoding='utf8')
+    assert 'SEARCH_API_KEY=' not in original
+    config.write_text(original + 'CUSTOM_VALUE="unchanged"\n', encoding='utf8')
+    original = config.read_text(encoding='utf8')
+    keep = subprocess.run(['node', '-e', script, 'keep'], cwd=root, env=env,
+                          capture_output=True, text=True, encoding='utf-8', timeout=10)
+    assert keep.returncode == 0
+    assert config.read_text(encoding='utf8') == original
+    edit = subprocess.run(['node', '-e', script, 'edit'], cwd=root, env=env,
+                          capture_output=True, text=True, encoding='utf-8', timeout=10)
+    assert edit.returncode == 0
+    assert 'CUSTOM_VALUE="unchanged"' in config.read_text(encoding='utf8')
