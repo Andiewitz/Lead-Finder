@@ -23,7 +23,7 @@ const path = require('path');
 
 const { green, red, yellow, cyan, magenta, bold, dim, gray } = chalk;
 
-const { ENV_FILE, DATA_DIR } = require('./config');
+const { ENV_FILE, loadExistingEnv, saveEnv } = require('./config');
 
 /**
  * Print a styled banner/header
@@ -61,9 +61,21 @@ async function configWizard() {
   banner('Interactive Setup', 'Configure your lead outreach system');
   console.log(`${dim(`Settings are saved to ${ENV_FILE}`)}\n`);
 
-  const existing = require('fs').existsSync(ENV_FILE)
-    ? loadExistingEnv()
-    : {};
+  if (!process.stdin.isTTY) throw new Error('Setup requires an interactive terminal. Set environment variables or run lead-finder --config in a terminal.');
+  const existing = loadExistingEnv();
+  if (fs.existsSync(ENV_FILE)) {
+    const { choice } = await prompt({ type: 'select', name: 'choice',
+      message: 'Existing settings found. What would you like to do?',
+      choices: [
+        { name: 'keep', message: 'Keep current settings and exit' },
+        { name: 'edit', message: 'Edit settings' },
+        { name: 'cancel', message: 'Cancel' },
+      ],
+    });
+    if (choice !== 'edit') { console.log('Settings were left unchanged.'); return; }
+  }
+  console.log('All fields can be skipped. Leave a field blank to keep its saved value.');
+  console.log('Environment variables take precedence over saved values.');
 
   const answers = await prompt([
     {
@@ -81,8 +93,7 @@ async function configWizard() {
       name: 'SEARCH_API_KEY',
       message: 'Tavily Search API Key',
       initial: existing.SEARCH_API_KEY || '',
-      required: true,
-      hint: 'Get it from https://tavily.com (free: 1,000 searches/month)',
+      hint: 'Needed only for discovery; get it from https://tavily.com',
       mask: true,
       format: (val) => val.trim(),
       result: (val) => val.trim(),
@@ -92,7 +103,6 @@ async function configWizard() {
       name: 'SMTP_USER',
       message: 'Gmail Address',
       initial: existing.SMTP_USER || '',
-      required: true,
       hint: 'Your Gmail email for sending + IMAP',
       format: (val) => val.trim(),
       result: (val) => val.trim(),
@@ -102,7 +112,6 @@ async function configWizard() {
       name: 'SMTP_PASS',
       message: 'Gmail App Password',
       initial: existing.SMTP_PASS || '',
-      required: true,
       hint: '16-char App Password from myaccount.google.com/apppasswords',
       mask: '*',
       format: (val) => val.trim(),
@@ -113,7 +122,6 @@ async function configWizard() {
       name: 'FROM_NAME',
       message: 'Your Name',
       initial: existing.FROM_NAME || '',
-      required: true,
       hint: 'Appears as email sender',
       format: (val) => val.trim(),
       result: (val) => val.trim(),
@@ -123,7 +131,6 @@ async function configWizard() {
       name: 'FROM_EMAIL',
       message: 'Sender Email',
       initial: existing.FROM_EMAIL || '',
-      required: true,
       hint: 'Email shown in From header (usually same as Gmail)',
       format: (val) => val.trim(),
       result: (val) => val.trim(),
@@ -151,7 +158,8 @@ async function configWizard() {
       name: 'DAILY_LIMIT',
       message: 'Daily Email Limit',
       initial: existing.DAILY_LIMIT || '20',
-      hint: 'Maximum emails per day (recommended: 20)',
+      hint: 'Positive whole number; default 20',
+      validate: (value) => !value.trim() || (/^[1-9]\d*$/.test(value.trim()) && Number.isSafeInteger(Number(value))) || 'Enter a positive whole number',
       format: (val) => val.trim() || '20',
       result: (val) => val.trim() || '20',
     },
@@ -177,73 +185,16 @@ async function configWizard() {
   ]);
 
   // Merge with existing values for fields not changed
-  const allVars = { ...existing, ...answers };
+  const allVars = { ...existing };
+  for (const [key, value] of Object.entries(answers)) {
+    if (value !== '') allVars[key] = value;
+  }
 
   // Save to .env
   saveEnv(allVars);
 
   console.log(`\n${green(`✓ Configuration saved to ${ENV_FILE}`)}`);
   console.log(`${dim('Run: lead-finder start to begin')}\n`);
-}
-
-/**
- * Load existing .env values
- */
-function loadExistingEnv() {
-  const fs = require('fs');
-  const vars = {};
-  if (!fs.existsSync(ENV_FILE)) return vars;
-  const content = fs.readFileSync(ENV_FILE, 'utf-8');
-  for (const line of content.split('\n')) {
-    const match = line.match(/^([^#\s][^=]*)=(.*)$/);
-    if (match) {
-      vars[match[1].trim()] = match[2].trim().replace(/^"|"$|^'|'$/g, '');
-    }
-  }
-  return vars;
-}
-
-/**
- * Save all variables to .env
- */
-function saveEnv(vars) {
-  const fs = require('fs');
-  const lines = [];
-  lines.push('# ── Lead Finder Configuration ──');
-  lines.push('# Configured by lead-finder --config');
-  lines.push(`OPENROUTER_API_KEY=${vars.OPENROUTER_API_KEY || ''}`);
-  lines.push(`ENRICH_API_KEY=${vars.ENRICH_API_KEY || ''}`);
-  lines.push('');
-  lines.push('# ── SMTP Email (Gmail - free, no domain needed) ──');
-  lines.push(`SMTP_HOST=${vars.SMTP_HOST || 'smtp.gmail.com'}`);
-  lines.push(`SMTP_PORT=${vars.SMTP_PORT || '587'}`);
-  lines.push(`SMTP_USER=${vars.SMTP_USER || ''}`);
-  lines.push(`SMTP_PASS=${vars.SMTP_PASS || ''}`);
-  lines.push('');
-  lines.push(`FROM_NAME=${vars.FROM_NAME || ''}`);
-  lines.push(`FROM_EMAIL=${vars.FROM_EMAIL || ''}`);
-  lines.push(`FROM_COMPANY=${vars.FROM_COMPANY || 'Your Company'}`);
-  lines.push(`VALUE_PROP=${vars.VALUE_PROP || 'I build custom websites for small businesses'}`);
-  lines.push('');
-  lines.push('# ── Limits ──');
-  lines.push(`DAILY_LIMIT=${vars.DAILY_LIMIT || '20'}`);
-  lines.push('');
-  lines.push('# ── Reply tracking (IMAP) ──');
-  lines.push(`IMAP_HOST=${vars.IMAP_HOST || 'imap.gmail.com'}`);
-  lines.push(`IMAP_USER=${vars.IMAP_USER || ''}`);
-  lines.push(`IMAP_PASS=${vars.IMAP_PASS || ''}`);
-  lines.push('');
-  lines.push('# ── Search API (Tavily) ──');
-  lines.push(`SEARCH_API_KEY=${vars.SEARCH_API_KEY || ''}`);
-  lines.push(`SEARCH_API_URL=${vars.SEARCH_API_URL || "https://api.tavily.com/search"}`);
-  lines.push('');
-  lines.push('# ── Database ──');
-  lines.push(`DB_PATH=${vars.DB_PATH || path.join(DATA_DIR, 'leads.db')}`);
-  lines.push(`PORTFOLIO_URL=${vars.PORTFOLIO_URL || ""}`);
-  lines.push(`GITHUB_URL=${vars.GITHUB_URL || ""}`);
-
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(ENV_FILE, lines.join('\n') + '\n', { mode: 0o600 });
 }
 
 /**
