@@ -290,17 +290,12 @@ def mark_send_uncertain(lead_id: int, db_path: str) -> None:
 
 def add_to_blacklist(email_addr: str, business_name: str = "", reason: str = "", db_path: str = "leads.db") -> None:
     """Add an email to the blacklist (never contact again)."""
-    conn = get_connection(db_path)
-    c = conn.cursor()
-    try:
-        c.execute(
+    with closing(get_connection(db_path)) as conn:
+        conn.execute(
             "INSERT OR IGNORE INTO blacklist (email, business_name, reason) VALUES (?, ?, ?)",
             (email_addr.strip().lower(), business_name, reason),
         )
         conn.commit()
-    except sqlite3.Error:
-        pass
-    conn.close()
 
 
 def add_to_whitelist(data: Dict[str, Any], db_path: str = "leads.db") -> int:

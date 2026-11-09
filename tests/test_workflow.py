@@ -220,3 +220,18 @@ require('./src/tui').configWizard().catch(e => {console.error(e); process.exitCo
                           capture_output=True, text=True, encoding='utf-8', timeout=10)
     assert edit.returncode == 0
     assert 'CUSTOM_VALUE="unchanged"' in config.read_text(encoding='utf8')
+
+
+def test_blacklist_failure_does_not_report_success():
+    import sqlite3
+    from unittest.mock import MagicMock
+
+    import pytest
+
+    conn = MagicMock()
+    conn.execute.side_effect = sqlite3.OperationalError('database locked')
+    out = io.StringIO()
+    with patch.object(main.db, 'get_connection', return_value=conn), contextlib.redirect_stdout(out):
+        with pytest.raises(sqlite3.OperationalError):
+            main.cmd_blacklist(argparse.Namespace(email='test@example.com', reason='opt out'))
+    assert 'blacklisted' not in out.getvalue()
