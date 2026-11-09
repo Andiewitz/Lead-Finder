@@ -395,8 +395,8 @@ def cmd_send_email(args):
     success = sender.send_email(args.email, subject, full_html, SMTP_HOST, SMTP_PORT,
                                 SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL)
     if not success:
-        db.mark_send_failed(lead_id, DB_PATH)
-        print(json.dumps({"sent": False, "email": args.email, "lead_id": lead_id}))
+        db.mark_send_uncertain(lead_id, DB_PATH)
+        print(json.dumps({"sent": False, "status": "uncertain", "error": "SMTP outcome unknown; review before retrying", "email": args.email, "lead_id": lead_id}))
         sys.exit(1)
     db.mark_sent(lead_id, "leads", DB_PATH)
     print(json.dumps({"sent": True, "email": args.email, "lead_id": lead_id}))

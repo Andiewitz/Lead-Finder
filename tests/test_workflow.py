@@ -103,3 +103,16 @@ def test_preview_never_sends_or_reserves(tmp_path, monkeypatch):
     assert json.loads(out.getvalue())['preview'] is True
     assert main.db.get_stats(path)['draft'] == 0
     assert 'github.com/Andiewitz' not in out.getvalue()
+
+
+def test_uncertain_send_blocks_retry_and_consumes_quota(tmp_path):
+    import pytest
+    from src import db
+    path = str(tmp_path / 'uncertain.db')
+    db.init_db(path)
+    lead = db.reserve_send({'public_business_email': 'a@example.com'}, 1, path)
+    db.mark_send_uncertain(lead, path)
+    with pytest.raises(ValueError, match='pending send'):
+        db.reserve_send({'public_business_email': 'a@example.com'}, 1, path)
+    with pytest.raises(ValueError, match='limit'):
+        db.reserve_send({'public_business_email': 'b@example.com'}, 1, path)
