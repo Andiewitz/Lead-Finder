@@ -38,6 +38,25 @@ function runPython(args = []) {
   return result.status == null ? 1 : result.status;
 }
 
+async function previewAndSend(email, company, personalization, category) {
+  const result = spawnSync(PYTHON_BIN, [MAIN_SCRIPT, 'send-email', '--email', email,
+    '--company', company || '', '--personalization', personalization || '',
+    '--category', category, '--preview'], { cwd: PROJECT_ROOT, encoding: 'utf8', env: { ...process.env } });
+  if (result.status !== 0) {
+    console.error(result.stderr || result.error?.message || result.stdout || 'Could not create draft');
+    return;
+  }
+  let draft;
+  try { draft = JSON.parse(result.stdout); }
+  catch (_) { console.error('Could not read the generated draft.'); return; }
+  if (result.stderr) console.error(result.stderr.trim());
+  console.log(`\nTo: ${draft.email}\nSubject: ${draft.subject}\n\n${draft.body}\n`);
+  const { confirmed } = await prompt({ type: 'confirm', name: 'confirmed',
+    message: `Send this exact draft to ${draft.email}?`, initial: false });
+  if (confirmed) runPython(['send-draft', '--id', String(draft.draft_id)]);
+  else console.log(`Draft ${draft.draft_id} saved. Send later with lead-finder send-draft --id ${draft.draft_id}`);
+}
+
 function showHelp() {
   console.log(`
 lead-finder — Lead discovery and individual outreach
@@ -141,23 +160,7 @@ async function runDashboardTUI() {
             { name: 'pressure washing', message: 'Pressure Washing' },
           ],
         });
-        const { nextStep } = await prompt({
-          type: 'select', name: 'nextStep', message: 'Choose an action:',
-          choices: [
-            { name: 'preview', message: 'Preview a draft (no email sent)' },
-            { name: 'send', message: 'Generate and send now' },
-            { name: 'cancel', message: 'Cancel' },
-          ],
-        });
-        if (nextStep !== 'cancel') {
-          if (nextStep === 'send') {
-            const { confirmed } = await prompt({ type: 'confirm', name: 'confirmed',
-              message: `Send an email to ${email} now?`, initial: false });
-            if (!confirmed) break;
-          }
-          runPython(['send-email', '--email', email, '--company', company || '', '--personalization', personalization || '', '--category', category, ...(nextStep === 'preview' ? ['--preview'] : [])]);
-          if (nextStep === 'preview') console.log('A later send generates a new draft; its wording may differ.');
-        }
+        await previewAndSend(email, company, personalization, category);
         break;
       }
       case 'check-replies':
@@ -236,23 +239,7 @@ async function runTUI() {
             { name: 'pressure washing', message: 'Pressure Washing' },
           ],
         });
-        const { nextStep } = await prompt({
-          type: 'select', name: 'nextStep', message: 'Choose an action:',
-          choices: [
-            { name: 'preview', message: 'Preview a draft (no email sent)' },
-            { name: 'send', message: 'Generate and send now' },
-            { name: 'cancel', message: 'Cancel' },
-          ],
-        });
-        if (nextStep !== 'cancel') {
-          if (nextStep === 'send') {
-            const { confirmed } = await prompt({ type: 'confirm', name: 'confirmed',
-              message: `Send an email to ${email} now?`, initial: false });
-            if (!confirmed) break;
-          }
-          runPython(['send-email', '--email', email, '--company', company || '', '--personalization', personalization || '', '--category', category, ...(nextStep === 'preview' ? ['--preview'] : [])]);
-          if (nextStep === 'preview') console.log('A later send generates a new draft; its wording may differ.');
-        }
+        await previewAndSend(email, company, personalization, category);
         break;
       }
       case 'check-replies':
@@ -307,6 +294,7 @@ async function main() {
       process.exitCode = runPython(['find-leads', ...process.argv.slice(3)]);
       break;
     case 'send-email':
+    case 'send-draft':
     case 'check-replies':
     case 'status':
     case 'blacklist':

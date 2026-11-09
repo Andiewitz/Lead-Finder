@@ -249,7 +249,7 @@ def is_blacklisted(email_addr: str, db_path: str = "leads.db") -> bool:
         ).fetchone() is not None
 
 
-def reserve_send(data: Dict[str, Any], daily_limit: int, db_path: str) -> int:
+def reserve_send(data: Dict[str, Any], daily_limit: int, db_path: str, draft_id: Optional[int] = None) -> int:
     """Atomically reserve quota and a recipient before contacting SMTP.
 
     An interrupted send remains reserved until an operator reviews it; this is
@@ -272,15 +272,28 @@ def reserve_send(data: Dict[str, Any], daily_limit: int, db_path: str) -> int:
         count = conn.execute("SELECT COUNT(*) FROM leads WHERE (sending_status='sent' AND date(sent_timestamp)=?) OR (sending_status IN ('sending', 'uncertain') AND date(created_at)=?)", (today, today)).fetchone()[0]
         if count >= daily_limit:
             raise ValueError("Daily email limit reached (UTC)")
-        data = dict(data, public_business_email=address)
-        columns = LEAD_COLUMNS + ["sending_status"]
-        values = [data.get(col) for col in LEAD_COLUMNS] + ["sending"]
-        cursor = conn.execute(f"INSERT INTO leads ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})", values)
+        if draft_id is not None:
+            cursor = conn.execute("UPDATE leads SET sending_status='sending', created_at=CURRENT_TIMESTAMP WHERE id=? AND sending_status='draft' AND lower(trim(public_business_email))=?", (draft_id, address))
+            if cursor.rowcount != 1:
+                raise ValueError("Draft is no longer available for sending")
+            lead_id = draft_id
+        else:
+            data = dict(data, public_business_email=address)
+            columns = LEAD_COLUMNS + ["sending_status"]
+            values = [data.get(col) for col in LEAD_COLUMNS] + ["sending"]
+            cursor = conn.execute(f"INSERT INTO leads ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})", values)
+            lead_id = cursor.lastrowid
         conn.commit()
-        return cursor.lastrowid
+        return lead_id
     finally:
         conn.close()
 
+
+
+def get_draft(draft_id: int, db_path: str) -> Optional[Dict[str, Any]]:
+    with closing(get_connection(db_path)) as conn:
+        row = conn.execute("SELECT * FROM leads WHERE id=? AND sending_status='draft'", (draft_id,)).fetchone()
+        return dict(row) if row else None
 
 def mark_send_uncertain(lead_id: int, db_path: str) -> None:
     with closing(get_connection(db_path)) as conn:

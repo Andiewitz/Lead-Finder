@@ -101,6 +101,11 @@ const TOOLS = [
     },
   },
   {
+    name: 'send_draft',
+    description: 'Send the exact saved draft after explicit user approval.',
+    inputSchema: { type: 'object', properties: { id: { type: 'integer', minimum: 1 } }, required: ['id'] },
+  },
+  {
     name: 'check_replies',
     description: 'Poll Gmail IMAP inbox for replies and classify them (Interested / Not interested / Out of office).',
     inputSchema: {
@@ -226,6 +231,14 @@ async function handleSendEmail(args) {
   catch (e) { return { success: false, error: 'Invalid response from email service' }; }
 }
 
+async function handleSendDraft(args) {
+  if (!Number.isInteger(args.id) || args.id < 1) throw new Error('A valid draft id is required');
+  const result = runPython(['send-draft', '--id', String(args.id)]);
+  let detail; try { detail = JSON.parse(result.stdout); } catch (_) {}
+  if (result.status !== 0) return { success: false, error: detail?.error || result.stderr || 'Failed to send draft', ...(detail || {}) };
+  return { success: true, ...detail };
+}
+
 async function handleCheckReplies(args) {
   const result = runPython(['check-replies']);
 
@@ -299,6 +312,7 @@ async function handleSearchLeads(args) {
 const HANDLERS = {
   find_leads: handleFindLeads,
   send_email: handleSendEmail,
+  send_draft: handleSendDraft,
   check_replies: handleCheckReplies,
   get_stats: handleGetStats,
   add_to_blacklist: handleAddToBlacklist,

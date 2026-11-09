@@ -244,6 +244,9 @@ def main() -> None:
     send_parser.add_argument('--category', type=str, default='services', help='Business category')
     send_parser.add_argument('--preview', action='store_true', help='Generate a draft without sending')
 
+    draft_parser = subparsers.add_parser('send-draft', help='Send an exact saved preview')
+    draft_parser.add_argument('--id', type=int, required=True, help='Saved draft ID')
+
     # check-replies - poll IMAP for replies
     subparsers.add_parser('check-replies', help='Poll IMAP inbox and classify replies')
 
@@ -268,6 +271,8 @@ def main() -> None:
         cmd_find_leads(args)
     elif args.command == 'send-email':
         cmd_send_email(args)
+    elif args.command == 'send-draft':
+        cmd_send_draft(args)
     elif args.command == 'check-replies':
         cmd_check_replies()
     elif args.command == 'status':
@@ -369,31 +374,54 @@ def cmd_send_email(args):
     if writer.OPT_OUT_FOOTER not in email_body:
         email_body += writer.OPT_OUT_FOOTER
     subject = writer.make_subject(company)
-    if args.preview:
-        print(json.dumps({"sent": False, "preview": True, "writer": "AI or template fallback" if OPENROUTER_API_KEY else "template", "email": args.email, "subject": subject, "body": email_body}, indent=2))
-        return
     record = {
         "business_name": company, "business_category": args.category,
-        "public_business_email": args.email, "email_source_url": "manual",
+        "public_business_email": args.email.strip().lower(), "email_source_url": "manual",
         "website_status": "UNKNOWN", "qualification_status": "needs review",
         "personalization_fact": args.personalization, "email_subject": subject,
         "email_body": email_body,
     }
+    if args.preview:
+        draft_id = db.add_lead_record(record, db_path=DB_PATH)
+        print(json.dumps({"sent": False, "preview": True, "draft_id": draft_id,
+                          "writer": "AI or template fallback" if OPENROUTER_API_KEY else "template",
+                          "email": args.email, "subject": subject, "body": email_body}, indent=2))
+        return
+    _send_record(record, smtp_port, daily_limit)
+
+
+def cmd_send_draft(args):
+    """Send the exact stored subject and body after fresh safety checks."""
+    record = db.get_draft(args.id, DB_PATH)
+    if record is None:
+        raise SystemExit("Draft not found or already sent")
+    if not SMTP_USER or not SMTP_PASS or not FROM_EMAIL or not FROM_NAME:
+        raise SystemExit("Sending requires SMTP_USER, SMTP_PASS, FROM_EMAIL and FROM_NAME.")
     try:
-        lead_id = db.reserve_send(record, daily_limit, DB_PATH)
+        smtp_port, daily_limit = int(SMTP_PORT), int(DAILY_LIMIT)
+        if not 1 <= smtp_port <= 65535 or daily_limit < 1:
+            raise ValueError
+    except ValueError as exc:
+        raise SystemExit("SMTP_PORT must be 1–65535 and DAILY_LIMIT must be a positive whole number.") from exc
+    _send_record(record, smtp_port, daily_limit, draft_id=args.id)
+
+
+def _send_record(record, smtp_port, daily_limit, draft_id=None):
+    try:
+        lead_id = db.reserve_send(record, daily_limit, DB_PATH, draft_id=draft_id)
     except ValueError as exc:
         print(json.dumps({"sent": False, "error": str(exc)}))
         sys.exit(1)
     from html import escape
-    full_html = f"<p>{escape(email_body).replace(chr(10), '<br>')}</p>"
-    success = sender.send_email(args.email, subject, full_html, SMTP_HOST, smtp_port,
-                                SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL)
+    full_html = f"<p>{escape(record['email_body']).replace(chr(10), '<br>')}</p>"
+    success = sender.send_email(record['public_business_email'], record['email_subject'], full_html,
+                                SMTP_HOST, smtp_port, SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL)
     if not success:
         db.mark_send_uncertain(lead_id, DB_PATH)
-        print(json.dumps({"sent": False, "status": "uncertain", "error": "SMTP outcome unknown; review before retrying", "email": args.email, "lead_id": lead_id}))
+        print(json.dumps({"sent": False, "status": "uncertain", "error": "SMTP outcome unknown; review before retrying", "email": record['public_business_email'], "lead_id": lead_id}))
         sys.exit(1)
     db.mark_sent(lead_id, "leads", DB_PATH)
-    print(json.dumps({"sent": True, "email": args.email, "lead_id": lead_id}))
+    print(json.dumps({"sent": True, "email": record['public_business_email'], "lead_id": lead_id}))
 
 
 def _reply_text(message):

@@ -104,7 +104,7 @@ def test_preview_never_sends_or_reserves(tmp_path, monkeypatch):
         main.cmd_send_email(args)
     send.assert_not_called()
     assert json.loads(out.getvalue())['preview'] is True
-    assert main.db.get_stats(path)['draft'] == 0
+    assert main.db.get_stats(path)['draft'] == 1
     assert 'github.com/Andiewitz' not in out.getvalue()
 
 
@@ -280,3 +280,35 @@ def test_unreadable_reply_is_not_marked_processed(tmp_path, monkeypatch):
         main.cmd_check_replies()
         main.cmd_check_replies()
     assert out.getvalue().count('Needs review') == 2
+
+
+def test_saved_preview_sends_exact_content_and_rechecks_suppression(tmp_path, monkeypatch):
+    import pytest
+
+    path = str(tmp_path / 'draft.db')
+    for key, value in {'DB_PATH': path, 'FROM_NAME': 'Tester', 'OPENROUTER_API_KEY': None,
+                       'SMTP_USER': 'me@example.com', 'SMTP_PASS': 'x', 'FROM_EMAIL': 'me@example.com',
+                       'SMTP_PORT': '587', 'DAILY_LIMIT': '5'}.items():
+        monkeypatch.setattr(main, key, value)
+    main.db.init_db(path)
+    args = argparse.Namespace(email='person@example.com', company='Example', personalization='verified detail', category='services', preview=True)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        main.cmd_send_email(args)
+    preview = json.loads(out.getvalue())
+    main.db.add_to_blacklist('person@example.com', db_path=path)
+    with patch.object(main.sender, 'send_email') as send, contextlib.redirect_stdout(io.StringIO()):
+        with pytest.raises(SystemExit):
+            main.cmd_send_draft(argparse.Namespace(id=preview['draft_id']))
+    send.assert_not_called()
+    conn = main.db.get_connection(path)
+    conn.execute('DELETE FROM blacklist')
+    conn.commit()
+    conn.close()
+    with patch.object(main.sender, 'send_email', return_value=True) as send, contextlib.redirect_stdout(io.StringIO()):
+        main.cmd_send_draft(argparse.Namespace(id=preview['draft_id']))
+    sent_args = send.call_args.args
+    assert sent_args[1] == preview['subject']
+    from html import escape
+    assert sent_args[2] == '<p>' + escape(preview['body']).replace('\n', '<br>') + '</p>'
+    assert main.db.get_draft(preview['draft_id'], path) is None
