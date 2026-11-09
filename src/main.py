@@ -253,7 +253,8 @@ def main() -> None:
     resolve_parser.add_argument('--result', choices=['sent', 'not-sent'], required=True)
 
     # check-replies - poll IMAP for replies
-    subparsers.add_parser('check-replies', help='Poll IMAP inbox and classify replies')
+    replies_parser = subparsers.add_parser('check-replies', help='Poll IMAP inbox and classify replies')
+    replies_parser.add_argument('--recheck', action='store_true', help='Re-examine previously processed messages')
 
     # status - view statistics
     subparsers.add_parser('status', help='View campaign statistics')
@@ -285,7 +286,7 @@ def main() -> None:
             raise SystemExit('Pending send not found')
         print(json.dumps({'id': args.id, 'result': args.result}))
     elif args.command == 'check-replies':
-        cmd_check_replies()
+        cmd_check_replies(recheck=args.recheck)
     elif args.command == 'status':
         cmd_status()
     elif args.command == 'blacklist':
@@ -502,7 +503,7 @@ def _is_opt_out(body):
     ))
 
 
-def cmd_check_replies():
+def cmd_check_replies(recheck=False):
     """Classify messages from known leads and suppress explicit opt-outs."""
     if not IMAP_USER or not IMAP_PASS:
         print(json.dumps({"error": "IMAP not configured"}))
@@ -528,7 +529,7 @@ def cmd_check_replies():
             key = msg.get('Message-ID') or f"{IMAP_USER}:{uid.decode()}"
             conn = db.get_connection(DB_PATH)
             try:
-                if conn.execute('SELECT 1 FROM processed_replies WHERE message_key=?', (key,)).fetchone():
+                if not recheck and conn.execute('SELECT 1 FROM processed_replies WHERE message_key=?', (key,)).fetchone():
                     continue
                 leads = conn.execute("SELECT id FROM leads WHERE sending_status='sent' AND lower(trim(public_business_email))=?", (address,)).fetchall()
                 if not leads:
@@ -545,7 +546,7 @@ def cmd_check_replies():
                     conn.execute('UPDATE leads SET qualification_status=? WHERE id=?', (classification.lower(), lead['id']))
                 if opt_out:
                     conn.execute('INSERT OR IGNORE INTO blacklist (email, reason) VALUES (?, ?)', (address, 'Opt-out reply'))
-                conn.execute('INSERT INTO processed_replies (message_key) VALUES (?)', (key,))
+                conn.execute('INSERT OR IGNORE INTO processed_replies (message_key) VALUES (?)', (key,))
                 conn.commit()
                 replies.append({"from": address, "subject": msg.get('Subject', ''),
                                 "classification": classification, "suppressed": opt_out,

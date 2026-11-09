@@ -396,3 +396,25 @@ require('./bin/lead-finder');
                           text=True, encoding='utf8', timeout=10)
     assert proc.returncode == 0
     assert '"--industry","plumber","--location","Seattle","--count","3"' in proc.stdout
+
+
+def test_recheck_reprocesses_previously_seen_messages(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from src import db
+    path = str(tmp_path / 'rescan.db')
+    for key, value in {'DB_PATH': path, 'IMAP_USER': 'me@example.com', 'IMAP_PASS': 'x', 'OPENROUTER_API_KEY': None}.items():
+        monkeypatch.setattr(main, key, value)
+    db.init_db(path)
+    lead = db.add_lead_record({'public_business_email': 'lead@example.com'}, db_path=path)
+    db.mark_sent(lead, db_path=path)
+    conn = db.get_connection(path)
+    conn.execute("INSERT INTO processed_replies (message_key) VALUES ('<old@x>')")
+    conn.commit()
+    conn.close()
+    mail = MagicMock()
+    msg = b'From: lead@example.com\r\nMessage-ID: <old@x>\r\nContent-Type: text/html\r\n\r\n<p>Unsubscribe me</p>'
+    mail.uid.side_effect = lambda cmd, *args: ('OK', [b'1']) if cmd == 'search' else ('OK', [(b'1', msg)])
+    with patch('imaplib.IMAP4_SSL', return_value=mail), contextlib.redirect_stdout(io.StringIO()):
+        main.cmd_check_replies(recheck=True)
+    assert db.is_blacklisted('lead@example.com', path)
