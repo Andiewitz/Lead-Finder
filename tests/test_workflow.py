@@ -67,3 +67,24 @@ def test_ai_not_interested_is_not_classed_as_interested():
     with patch('src.classifier.requests.post') as post:
         post.return_value.json.return_value = response
         assert classifier._classify_with_ai('no', 'key') == 'Not interested'
+
+
+def test_mcp_tool_returns_protocol_content(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, LEAD_FINDER_PYTHON=sys.executable, DB_PATH=str(tmp_path / 'mcp.db'))
+    requests = '\n'.join(json.dumps(x) for x in [
+        {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {}},
+        {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
+        {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {'name': 'get_stats', 'arguments': {}}},
+    ]) + '\n'
+    proc = subprocess.run(['node', str(root / 'src' / 'mcp_server.js')], input=requests,
+                          text=True, capture_output=True, env=env, timeout=15, check=True)
+    messages = [json.loads(line) for line in proc.stdout.splitlines()]
+    assert len(messages) == 2
+    result = next(m['result'] for m in messages if m.get('id') == 2)
+    assert result['content'][0]['type'] == 'text'
+    assert json.loads(result['content'][0]['text'])['success'] is True

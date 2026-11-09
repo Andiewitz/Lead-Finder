@@ -7,6 +7,7 @@ Handles SMTP sending via Gmail and confirmation emails to the operator.
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib
+import sys
 
 
 def send_email(
@@ -39,7 +40,7 @@ def send_email(
         server.quit()
         return True
     except Exception as e:
-        print(f"  SMTP error: {e}")
+        print(f"  SMTP error: {e}", file=sys.stderr)
         return False
 
 

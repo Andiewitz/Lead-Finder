@@ -8,6 +8,7 @@ Fallback: Template-based emails when OpenRouter is rate-limited or unavailable.
 from typing import Optional
 
 import requests
+import sys
 
 
 # Category-specific tips for template emails
@@ -64,16 +65,16 @@ def chat(
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 429:
                 wait = 2 ** attempt
-                print(f"  OpenRouter rate limited, waiting {wait}s...")
+                print(f"  OpenRouter rate limited, waiting {wait}s...", file=sys.stderr)
                 import time
                 time.sleep(wait)
                 continue
-            print(f"  OpenRouter error: {e}")
+            print(f"  OpenRouter error: {e}", file=sys.stderr)
             return None
         except Exception as e:
-            print(f"  OpenRouter request failed: {e}")
+            print(f"  OpenRouter request failed: {e}", file=sys.stderr)
             return None
-    print("  OpenRouter max retries reached, using template fallback")
+    print("  OpenRouter max retries reached, using template fallback", file=sys.stderr)
     return None
 
 

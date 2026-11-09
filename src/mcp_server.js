@@ -327,7 +327,7 @@ function handleMessage(line) {
     return;
   }
 
-  if (method === 'initialized') {
+  if (method === 'notifications/initialized' || method === 'initialized') {
     // Notification, no response needed
     return;
   }
@@ -347,11 +347,13 @@ function handleMessage(line) {
     }
 
     Promise.resolve(handler(toolArgs || {}))
-      .then((result) => sendResult(id, result))
+      .then((result) => sendResult(id, { content: [{ type: 'text', text: JSON.stringify(result) }], isError: result.success === false }))
       .catch((err) => sendError(id, -32603, err.message || 'Internal error'));
     return;
   }
 
+  // Notifications have no response.
+  if (id === undefined) return;
   // Unknown method
   sendError(id, -32601, `Method not found: ${method}`);
 }
@@ -371,9 +373,4 @@ rl.on('line', (line) => {
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
-// Announce readiness
-sendJson({
-  jsonrpc: '2.0',
-  method: 'server/ready',
-  params: { name: 'lead-finder', version: '1.0.0' },
-});
+
