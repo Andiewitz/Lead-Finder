@@ -48,7 +48,7 @@ async function welcome() {
   console.log(`${yellow('Quick commands:')}`);
   console.log(`  ${cyan('lead-finder start')}    Start MCP server (for OpenCode/KiloCode)`);
   console.log(`  ${cyan('lead-finder find-leads')} Discover new leads via Tavily`);
-  console.log(`  ${cyan('lead-finder send-email <email>')} Send a cold email`);
+  console.log(`  ${cyan('lead-finder send-email --email <address>')} Send a cold email`);
   console.log(`  ${cyan('lead-finder check-replies')} Poll IMAP for replies`);
   console.log(`  ${cyan('lead-finder status')}    View campaign statistics`);
   console.log(`  ${cyan('lead-finder --config')}  Run interactive setup\n`);

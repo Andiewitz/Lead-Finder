@@ -418,3 +418,53 @@ def test_recheck_reprocesses_previously_seen_messages(tmp_path, monkeypatch):
     with patch('imaplib.IMAP4_SSL', return_value=mail), contextlib.redirect_stdout(io.StringIO()):
         main.cmd_check_replies(recheck=True)
     assert db.is_blacklisted('lead@example.com', path)
+
+
+def test_concurrent_send_reservations_cannot_exceed_quota(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from src import db
+    path = str(tmp_path / 'concurrent.db')
+    db.init_db(path)
+    barrier = Barrier(2)
+    def reserve(email):
+        barrier.wait(timeout=5)
+        try:
+            return db.reserve_send({'public_business_email': email}, 1, path)
+        except ValueError:
+            return None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(reserve, ['a@example.com', 'b@example.com']))
+    assert sum(result is not None for result in results) == 1
+
+
+def test_terminal_sends_saved_preview_id_after_confirmation(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, LEAD_FINDER_HOME=str(tmp_path))
+    script = """
+const enquirer = require.resolve('enquirer'); let actions=0;
+require.cache[enquirer] = {id:enquirer,filename:enquirer,loaded:true,exports:{prompt:async q=>{
+ if (q.name==='action') return {action:actions++ ? 'exit' : 'send-email'};
+ if (q.name==='email') return {email:'lead@example.com'};
+ if (q.name==='company') return {company:'Example'};
+ if (q.name==='personalization') return {personalization:'detail'};
+ if (q.name==='category') return {category:'services'};
+ if (q.name==='confirmed') return {confirmed:true}; throw Error('unexpected prompt');
+}}};
+require('child_process').spawnSync=(bin,args)=>{
+ console.log('ARGS:'+JSON.stringify(args));
+ if (args.includes('--preview')) return {status:0,stdout:JSON.stringify({email:'lead@example.com',subject:'Exact subject',body:'Exact body',draft_id:42}),stderr:''};
+ return {status:0};
+};
+process.stdin.once=(event,callback)=>{if(event==='data') process.nextTick(callback);return process.stdin;};
+process.argv[2]='--tui'; require('./bin/lead-finder');
+"""
+    proc = subprocess.run(['node', '-e', script], cwd=root, env=env, capture_output=True,
+                          text=True, encoding='utf8', timeout=10)
+    assert proc.returncode == 0
+    assert 'Exact subject' in proc.stdout and 'Exact body' in proc.stdout
+    assert '"send-draft","--id","42"' in proc.stdout

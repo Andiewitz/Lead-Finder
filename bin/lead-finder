@@ -75,6 +75,9 @@ Usage:
   lead-finder start                 Start the MCP server (stdio)
   lead-finder find-leads            Discover new leads via Tavily search
   lead-finder send-email --email <address> [--preview]  Preview or send an email
+  lead-finder send-draft --id <id>   Send a saved preview
+  lead-finder review-sends          List sends needing review
+  lead-finder resolve-send --id <id> --result <sent|not-sent>  Record verified outcome
   lead-finder check-replies         Poll IMAP inbox and classify replies
   lead-finder status                View campaign statistics
   lead-finder --config | -config    # Interactive TUI setup wizard
