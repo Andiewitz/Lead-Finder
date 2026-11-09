@@ -40,12 +40,12 @@ function runPython(args = []) {
 
 function showHelp() {
   console.log(`
-lead-finder — Autonomous lead outreach automation
+lead-finder — Lead discovery and individual outreach
 
 Usage:
   lead-finder start                 Start the MCP server (stdio)
   lead-finder find-leads            Discover new leads via Tavily search
-  lead-finder send-email <email>    Send a personalized cold email to <email>
+  lead-finder send-email --email <address> [--preview]  Preview or send an email
   lead-finder check-replies         Poll IMAP inbox and classify replies
   lead-finder status                View campaign statistics
   lead-finder --config | -config    # Interactive TUI setup wizard
@@ -62,8 +62,8 @@ Examples:
 
 Configuration:
   Run 'lead-finder --config' to set up your API keys interactively via TUI.
-  Or copy .env.example to .env and edit manually.
-  Required: OPENROUTER_API_KEY, SEARCH_API_KEY, SMTP_USER, SMTP_PASS, FROM_EMAIL
+  Configure only the services you use; OpenRouter is optional.
+  Settings are stored in ~/.lead-finder (or LEAD_FINDER_HOME).
 `);
 }
 

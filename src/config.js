@@ -256,14 +256,9 @@ async function runConfigWizard() {
 }
 
 function checkEnvComplete() {
-  if (!fs.existsSync(ENV_FILE)) return false;
-  const content = fs.readFileSync(ENV_FILE, 'utf-8');
-  const required = ['OPENROUTER_API_KEY', 'SEARCH_API_KEY', 'SMTP_USER', 'SMTP_PASS', 'FROM_EMAIL'];
-  for (const key of required) {
-    const match = content.match(new RegExp(`^${key}=(.*)$`, 'm'));
-    if (!match || !match[1].trim()) return false;
-  }
-  return true;
+  const values = { ...loadExistingEnv(), ...process.env };
+  return ['SEARCH_API_KEY', 'SMTP_USER', 'SMTP_PASS', 'FROM_EMAIL']
+    .every((key) => Boolean(values[key] && values[key].trim()));
 }
 
 module.exports = {
