@@ -391,6 +391,9 @@ def get_stats(db_path: str = "leads.db") -> Dict[str, int]:
     c.execute("SELECT COUNT(*) FROM leads WHERE sending_status='draft'")
     stats["draft"] = c.fetchone()[0]
 
+    c.execute("SELECT COUNT(*) FROM leads WHERE sending_status IN ('sending', 'uncertain')")
+    stats["needs_send_review"] = c.fetchone()[0]
+
     c.execute("SELECT COUNT(*) FROM whitelist")
     stats["whitelist"] = c.fetchone()[0]
 

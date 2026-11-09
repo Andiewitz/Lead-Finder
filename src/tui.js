@@ -275,6 +275,7 @@ async function dashboard(stats) {
   console.log(`${bold('Emails sent today:')} ${green(stats.sent_today || 0)}`);
   console.log(`${bold('Total sent:')} ${green(stats.total_sent || stats.sent || 0)}`);
   console.log(`${bold('Drafts:')} ${yellow(stats.draft || 0)}`);
+  console.log(`${bold('Sends requiring review:')} ${yellow(stats.needs_send_review || 0)}`);
   console.log(`${bold('Whitelist:')} ${cyan(stats.whitelist || 0)}`);
   console.log(`${bold('Blacklist:')} ${red(stats.blacklist || 0)}\n`);
 }
