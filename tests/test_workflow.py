@@ -489,3 +489,21 @@ def test_authentication_failure_restores_draft_for_retry(tmp_path, monkeypatch):
     assert result['status'] == 'not-sent'
     assert main.db.get_draft(result['draft_id'], path) is not None
     assert main.db.get_pending_sends(path) == []
+
+
+def test_mcp_preview_returns_saved_draft_id(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, LEAD_FINDER_PYTHON=sys.executable, LEAD_FINDER_HOME=str(tmp_path), FROM_NAME='Tester')
+    for key in ('OPENROUTER_API_KEY', 'DB_PATH'):
+        env.pop(key, None)
+    request = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+        'name': 'send_email', 'arguments': {'email': 'person@example.com', 'preview': True}}}
+    proc = subprocess.run(['node', str(root / 'src' / 'mcp_server.js')], input=json.dumps(request) + '\n',
+                          text=True, capture_output=True, env=env, timeout=15, check=True)
+    result = json.loads(json.loads(proc.stdout)['result']['content'][0]['text'])
+    assert result['success'] is True and result['preview'] is True
+    assert isinstance(result['draft_id'], int)

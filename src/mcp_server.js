@@ -236,6 +236,7 @@ async function handleSendDraft(args) {
   const result = runPython(['send-draft', '--id', String(args.id)]);
   let detail; try { detail = JSON.parse(result.stdout); } catch (_) {}
   if (result.status !== 0) return { success: false, error: detail?.error || result.stderr || 'Failed to send draft', ...(detail || {}) };
+  if (!detail || detail.sent !== true) return { success: false, error: 'Invalid response from draft sender' };
   return { success: true, ...detail };
 }
 
